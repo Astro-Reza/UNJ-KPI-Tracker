@@ -4,13 +4,13 @@ International Office Student Registration & Task Management
 """
 
 import os
-import shutil
+import io
 import csv
 import json
 import datetime
 import functools
 import requests
-from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, Response, session, redirect, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
@@ -35,34 +35,10 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Paste the URL you copied from the deployment step
+# ── Google Sheets API URL ────────────────────────────
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz0m7XTeCG404waRV07RmZJWTut-hSb_FpTOMQWQsPWlUZXMBrHctk_o2E2E9zVDlqXnw/exec"
 
-# Paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-if os.environ.get('VERCEL') == '1':
-    # Vercel serverless functions have a read-only filesystem except for /tmp
-    DATABASE_DIR = '/tmp/database'
-    os.makedirs(DATABASE_DIR, exist_ok=True)
-    
-    # Copy initial database files to /tmp if they don't exist yet
-    original_db_dir = os.path.join(BASE_DIR, 'database')
-    if os.path.exists(original_db_dir):
-        for filename in os.listdir(original_db_dir):
-            dest_file = os.path.join(DATABASE_DIR, filename)
-            src_file = os.path.join(original_db_dir, filename)
-            if not os.path.exists(dest_file) and os.path.isfile(src_file):
-                shutil.copy2(src_file, dest_file)
-else:
-    DATABASE_DIR = os.path.join(BASE_DIR, 'database')
-
-STUDENT_CSV = os.path.join(DATABASE_DIR, 'student_data.csv')
-STUDENT_SQL = os.path.join(DATABASE_DIR, 'student_data.sql')
-TASK_CSV = os.path.join(DATABASE_DIR, 'task_data.csv')
-TASK_SQL = os.path.join(DATABASE_DIR, 'task_data.sql')
-CONTRIB_CSV = os.path.join(DATABASE_DIR, 'task_contributors.csv')
-CONTRIB_SQL = os.path.join(DATABASE_DIR, 'task_contributors.sql')
+# Column headers (used for CSV export generation)
 CSV_HEADER = ['name_id', 'email_id', 'department_id', 'nim_id', 'score', 'job_id_list', 'password']
 TASK_HEADER = ['task_id', 'task_name', 'type_id', 'start_date', 'end_date', 'status_id', 'pic', 'related_links', 'description']
 CONTRIB_HEADER = ['task_id', 'nim_id', 'points']
@@ -80,105 +56,126 @@ TASK_TYPES = {1: 'Publication', 2: 'Event', 3: 'Camp'}
 TASK_STATUSES = {1: 'Planning', 2: 'In-Progress', 3: 'Execution', 4: 'Documentation', 5: 'Lecturer Review', 6: 'Done'}
 
 
-# ── Student Helpers ──────────────────────────────────
-def _ensure_csv():
-    """Create CSV with header if it doesn't exist or is empty."""
-    if not os.path.exists(STUDENT_CSV) or os.path.getsize(STUDENT_CSV) == 0:
-        with open(STUDENT_CSV, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(CSV_HEADER)
+# ── Google Sheets API Helper ────────────────────────
 
+def _sheets_request(action, data=None):
+    """Send a POST request to the Google Apps Script web app."""
+    payload = {'action': action}
+    if data is not None:
+        payload['data'] = data
+    try:
+        response = requests.post(
+            WEB_APP_URL,
+            json=payload,
+            headers={'Content-Type': 'application/json'},
+            timeout=30
+        )
+        # Google Apps Script may redirect (302) — requests follows by default
+        result = response.json()
+        if not result.get('success'):
+            raise Exception(result.get('error', 'Unknown error from Sheets API'))
+        return result
+    except requests.exceptions.RequestException as e:
+        raise Exception(f'Failed to connect to Google Sheets: {str(e)}')
+
+
+# ── Student Helpers ──────────────────────────────────
 
 def _read_students():
-    """Return list of student dicts from CSV."""
-    _ensure_csv()
+    """Return list of student dicts from Google Sheets."""
+    result = _sheets_request('getStudents')
     students = []
-    with open(STUDENT_CSV, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            row['department_id'] = int(row['department_id'])
-            row['department_name'] = DEPARTMENTS.get(row['department_id'], '')
+    for row in result.get('data', []):
+        try:
+            row['department_id'] = int(row.get('department_id', 0))
+        except (ValueError, TypeError):
+            row['department_id'] = 0
+        row['department_name'] = DEPARTMENTS.get(row['department_id'], '')
+        try:
             row['score'] = float(row.get('score', 0))
-            if 'password' not in row or not row['password']:
-                # Default password is the nim_id hashed
-                row['password'] = generate_password_hash(row['nim_id'])
-            students.append(row)
+        except (ValueError, TypeError):
+            row['score'] = 0.0
+        if not row.get('password'):
+            row['password'] = generate_password_hash(row.get('nim_id', ''))
+        students.append(row)
     return students
 
 
+def _write_students(students):
+    """Save the entire student list to Google Sheets."""
+    rows = []
+    for s in students:
+        rows.append({
+            'name_id': s.get('name_id', ''),
+            'email_id': s.get('email_id', ''),
+            'department_id': str(s.get('department_id', '')),
+            'nim_id': s.get('nim_id', ''),
+            'score': str(s.get('score', 0)),
+            'job_id_list': s.get('job_id_list', ''),
+            'password': s.get('password', '')
+        })
+    _sheets_request('saveStudents', rows)
+
+
 def _append_student(name_id, email_id, department_id, nim_id):
-    """Append a student row to the CSV."""
-    _ensure_csv()
-    with open(STUDENT_CSV, 'a', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        default_pw = generate_password_hash(nim_id)
-        writer.writerow([name_id, email_id, department_id, nim_id, 0, '', default_pw])
-
-
-def _write_sql():
-    """Regenerate the SQL file from current CSV data."""
+    """Add a new student to Google Sheets."""
     students = _read_students()
-    with open(STUDENT_SQL, 'w', encoding='utf-8') as f:
-        f.write('-- Student Data INSERT statements\n')
-        f.write(f'-- Generated on {datetime.datetime.now().isoformat()}\n\n')
-        for s in students:
-            name = s['name_id'].replace("'", "''")
-            email = s.get('email_id', '').replace("'", "''")
-            nim = s['nim_id'].replace("'", "''")
-            job = s.get('job_id_list', '').replace("'", "''")
-            pwd = s.get('password', '').replace("'", "''")
-            f.write(
-                f"INSERT INTO student_data (name_id, email_id, department_id, nim_id, score, job_id_list, password) "
-                f"VALUES ('{name}', '{email}', {s['department_id']}, '{nim}', {s['score']}, '{job}', '{pwd}');\n"
-            )
+    default_pw = generate_password_hash(nim_id)
+    students.append({
+        'name_id': name_id,
+        'email_id': email_id,
+        'department_id': department_id,
+        'nim_id': nim_id,
+        'score': 0,
+        'job_id_list': '',
+        'password': default_pw
+    })
+    _write_students(students)
 
 
 def _nim_exists(nim_id):
-    """Check if a NIM already exists in the CSV."""
+    """Check if a NIM already exists."""
     students = _read_students()
     return any(s['nim_id'] == nim_id for s in students)
 
 
-def _write_students(students):
-    """Rewrite the entire student CSV from a list of dicts."""
-    with open(STUDENT_CSV, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(CSV_HEADER)
-        for s in students:
-            writer.writerow([
-                s.get('name_id', ''),
-                s.get('email_id', ''),
-                s.get('department_id', ''),
-                s.get('nim_id', ''),
-                s.get('score', 0),
-                s.get('job_id_list', ''),
-                s.get('password', '')
-            ])
-
-
 # ── Task Helpers ─────────────────────────────────────
 
-def _ensure_task_csv():
-    """Create task CSV with header if it doesn't exist or is empty."""
-    if not os.path.exists(TASK_CSV) or os.path.getsize(TASK_CSV) == 0:
-        with open(TASK_CSV, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(TASK_HEADER)
-
-
 def _read_tasks():
-    """Return list of task dicts from CSV."""
-    _ensure_task_csv()
+    """Return list of task dicts from Google Sheets."""
+    result = _sheets_request('getTasks')
     tasks = []
-    with open(TASK_CSV, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            row['type_id'] = int(row['type_id'])
-            row['status_id'] = int(row['status_id'])
-            row['type_name'] = TASK_TYPES.get(row['type_id'], '')
-            row['status_name'] = TASK_STATUSES.get(row['status_id'], '')
-            tasks.append(row)
+    for row in result.get('data', []):
+        try:
+            row['type_id'] = int(row.get('type_id', 0))
+        except (ValueError, TypeError):
+            row['type_id'] = 0
+        try:
+            row['status_id'] = int(row.get('status_id', 0))
+        except (ValueError, TypeError):
+            row['status_id'] = 0
+        row['type_name'] = TASK_TYPES.get(row['type_id'], '')
+        row['status_name'] = TASK_STATUSES.get(row['status_id'], '')
+        tasks.append(row)
     return tasks
+
+
+def _write_tasks(tasks):
+    """Save the entire task list to Google Sheets."""
+    rows = []
+    for t in tasks:
+        rows.append({
+            'task_id': str(t.get('task_id', '')),
+            'task_name': str(t.get('task_name', '')),
+            'type_id': str(t.get('type_id', '')),
+            'start_date': str(t.get('start_date', '')),
+            'end_date': str(t.get('end_date', '')),
+            'status_id': str(t.get('status_id', '')),
+            'pic': str(t.get('pic', '')),
+            'related_links': str(t.get('related_links', '')),
+            'description': str(t.get('description', '')),
+        })
+    _sheets_request('saveTasks', rows)
 
 
 def _generate_task_id(type_id):
@@ -192,119 +189,70 @@ def _generate_task_id(type_id):
 
 
 def _append_task(task_id, task_name, type_id, start_date, end_date, status_id, pic, related_links, description):
-    """Append a task row to the CSV."""
-    _ensure_task_csv()
-    with open(TASK_CSV, 'a', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow([task_id, task_name, type_id, start_date, end_date, status_id, pic, related_links, description])
-    _write_task_sql()
+    """Add a new task to Google Sheets."""
+    tasks = _read_tasks()
+    tasks.append({
+        'task_id': task_id,
+        'task_name': task_name,
+        'type_id': type_id,
+        'start_date': start_date,
+        'end_date': end_date,
+        'status_id': status_id,
+        'pic': pic,
+        'related_links': related_links,
+        'description': description
+    })
+    _write_tasks(tasks)
 
 
 def _update_tasks(tasks):
-    """Rewrite entire task CSV from a list of dicts."""
-    with open(TASK_CSV, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(TASK_HEADER)
-        for t in tasks:
-            writer.writerow([
-                t.get('task_id', ''),
-                t.get('task_name', ''),
-                t.get('type_id', ''),
-                t.get('start_date', ''),
-                t.get('end_date', ''),
-                t.get('status_id', ''),
-                t.get('pic', ''),
-                t.get('related_links', ''),
-                t.get('description', ''),
-            ])
-    _write_task_sql()
-
-
-# ── Task SQL Generation ──────────────────────────────
-
-def _write_task_sql():
-    """Regenerate task_data.sql from current CSV data."""
-    tasks = _read_tasks()
-    with open(TASK_SQL, 'w', encoding='utf-8') as f:
-        f.write('-- Task Data INSERT statements\n')
-        f.write(f'-- Generated on {datetime.datetime.now().isoformat()}\n\n')
-        for t in tasks:
-            tid = str(t.get('task_id', '')).replace("'", "''")
-            tname = str(t.get('task_name', '')).replace("'", "''")
-            pic = str(t.get('pic', '')).replace("'", "''")
-            links = str(t.get('related_links', '')).replace("'", "''")
-            desc = str(t.get('description', '')).replace("'", "''")
-            f.write(
-                f"INSERT INTO task_data (task_id, task_name, type_id, start_date, end_date, status_id, pic, related_links, description) "
-                f"VALUES ('{tid}', '{tname}', {t.get('type_id', 0)}, '{t.get('start_date', '')}', '{t.get('end_date', '')}', "
-                f"{t.get('status_id', 0)}, '{pic}', '{links}', '{desc}');\n"
-            )
+    """Rewrite entire task list in Google Sheets."""
+    _write_tasks(tasks)
 
 
 # ── Contributor Helpers ──────────────────────────────
 
-def _ensure_contrib_csv():
-    """Create contributor CSV with header if it doesn't exist or is empty."""
-    if not os.path.exists(CONTRIB_CSV) or os.path.getsize(CONTRIB_CSV) == 0:
-        with open(CONTRIB_CSV, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(CONTRIB_HEADER)
+def _read_all_contributors():
+    """Return all contributor rows from Google Sheets."""
+    result = _sheets_request('getContributors')
+    rows = []
+    for row in result.get('data', []):
+        try:
+            row['points'] = float(row.get('points', 0))
+        except (ValueError, TypeError):
+            row['points'] = 0.0
+        rows.append(row)
+    return rows
+
+
+def _write_all_contributors(rows):
+    """Save all contributor rows to Google Sheets."""
+    data = []
+    for r in rows:
+        data.append({
+            'task_id': str(r.get('task_id', '')),
+            'nim_id': str(r.get('nim_id', '')),
+            'points': str(r.get('points', 0))
+        })
+    _sheets_request('saveContributors', data)
 
 
 def _read_task_contributors(task_id):
     """Return list of contributor dicts for a given task."""
-    _ensure_contrib_csv()
-    results = []
-    with open(CONTRIB_CSV, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row['task_id'] == task_id:
-                row['points'] = float(row.get('points', 0))
-                results.append(row)
-    return results
+    all_rows = _read_all_contributors()
+    return [r for r in all_rows if r['task_id'] == task_id]
 
 
 def _write_task_contributors(task_id, rows):
     """Rewrite contributors for a specific task. Keeps other tasks' rows intact."""
-    _ensure_contrib_csv()
-    # Read all existing rows
-    all_rows = []
-    with open(CONTRIB_CSV, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row['task_id'] != task_id:
-                all_rows.append(row)
+    all_rows = _read_all_contributors()
+    # Remove existing rows for this task
+    all_rows = [r for r in all_rows if r['task_id'] != task_id]
     # Add new rows for this task
     for r in rows:
         all_rows.append({'task_id': task_id, 'nim_id': r['nim_id'], 'points': r.get('points', 0)})
-    # Write back
-    with open(CONTRIB_CSV, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(CONTRIB_HEADER)
-        for row in all_rows:
-            writer.writerow([row['task_id'], row['nim_id'], row['points']])
-    _write_contrib_sql()
+    _write_all_contributors(all_rows)
 
-
-def _write_contrib_sql():
-    """Regenerate task_contributors.sql from current CSV data."""
-    _ensure_contrib_csv()
-    all_rows = []
-    with open(CONTRIB_CSV, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            all_rows.append(row)
-    with open(CONTRIB_SQL, 'w', encoding='utf-8') as f:
-        f.write('-- Task Contributors INSERT statements\n')
-        f.write(f'-- Generated on {datetime.datetime.now().isoformat()}\n\n')
-        for row in all_rows:
-            tid = str(row.get('task_id', '')).replace("'", "''")
-            nim = str(row.get('nim_id', '')).replace("'", "''")
-            pts = float(row.get('points', 0))
-            f.write(
-                f"INSERT INTO task_contributors (task_id, nim_id, points) "
-                f"VALUES ('{tid}', '{nim}', {pts});\n"
-            )
 
 def _update_student_selection(nim_id, selected_task_ids):
     """Update the student's task list in both student_data and task_contributors."""
@@ -314,41 +262,26 @@ def _update_student_selection(nim_id, selected_task_ids):
         return False
 
     old_task_ids = set(student.get('job_id_list', '').split(';')) if student.get('job_id_list') else set()
-    # Filter out empty strings if any
     old_task_ids = {t for t in old_task_ids if t.strip()}
     new_task_ids = set(selected_task_ids)
 
     student['job_id_list'] = ';'.join(new_task_ids)
     _write_students(students)
-    _write_sql()
 
     added_tasks = new_task_ids - old_task_ids
     removed_tasks = old_task_ids - new_task_ids
 
     if added_tasks or removed_tasks:
-        _ensure_contrib_csv()
-        all_rows = []
-        with open(CONTRIB_CSV, 'r', newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                all_rows.append(row)
-
+        all_rows = _read_all_contributors()
         # Remove student from unselected tasks
-        all_rows = [row for row in all_rows if not (row['nim_id'] == nim_id and row['task_id'] in removed_tasks)]
-
+        all_rows = [r for r in all_rows if not (r['nim_id'] == nim_id and r['task_id'] in removed_tasks)]
         # Add student to newly selected tasks
         for tid in added_tasks:
             all_rows.append({'task_id': tid, 'nim_id': nim_id, 'points': 0})
-
-        with open(CONTRIB_CSV, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(CONTRIB_HEADER)
-            for row in all_rows:
-                writer.writerow([row['task_id'], row['nim_id'], row['points']])
-
-        _write_contrib_sql()
+        _write_all_contributors(all_rows)
 
     return True
+
 
 # ── Auth Routes ──────────────────────────────────────
 
@@ -408,10 +341,8 @@ def index():
     recent_tasks = list(reversed(tasks))
 
     # ── Leaderboard ──────────────────────────────────
-    # Overall top performer
     top_overall = max(students, key=lambda s: s['score']) if students else None
 
-    # Top performer per department (skip dept 1 = Head, dept 2 = Secretary)
     dept_leaders = []
     for dept_id in [3, 4, 5, 6]:
         dept_students = [s for s in students if s['department_id'] == dept_id]
@@ -522,7 +453,6 @@ def register_student():
 
     department_id = int(department_id)
     _append_student(name_id, email_id, department_id, nim_id)
-    _write_sql()
 
     return jsonify({
         'message': f'{name_id} registered successfully!',
@@ -541,12 +471,11 @@ def register_student():
 @app.route('/api/students/save-all', methods=['POST'])
 @login_required
 def save_all_students():
-    """Rewrite the entire student CSV from the provided JSON array."""
+    """Rewrite the entire student list from the provided JSON array."""
     data = request.get_json()
     if not data or 'students' not in data:
         return jsonify({'error': 'Invalid request body'}), 400
     _write_students(data['students'])
-    _write_sql()
     return jsonify({'message': f'Saved {len(data["students"])} students'}), 200
 
 @app.route('/api/student/auth', methods=['POST'])
@@ -572,10 +501,8 @@ def student_auth():
         return jsonify({'error': 'Incorrect password'}), 401
         
     tasks = _read_tasks()
-    # Return tasks that are currently available to pick (e.g. Planning, In-progress, Execution)
     available_tasks = [t for t in tasks if t['status_id'] in (1, 2, 3)]
     
-    # Do not expose the hashed password to the client profile
     student_profile = {k: v for k, v in student.items() if k != 'password'}
     
     return jsonify({
@@ -608,7 +535,6 @@ def change_password():
         
     students[student_idx]['password'] = generate_password_hash(new_password)
     _write_students(students)
-    _write_sql()
     
     return jsonify({'message': 'Password updated successfully!'}), 200
 
@@ -738,7 +664,6 @@ def update_task(task_id):
     type_id = int(type_id)
     status_id = int(status_id)
 
-    # Update only the allowed fields
     t = tasks[task_idx]
     t['task_name'] = task_name
     t['type_id'] = type_id
@@ -813,43 +738,61 @@ def update_task_contributors(task_id):
 @app.route('/api/export/csv')
 @login_required
 def export_csv():
-    """Download student_data.csv."""
-    _ensure_csv()
-    return send_file(STUDENT_CSV, as_attachment=True, download_name='student_data.csv')
+    """Generate and download student_data.csv from Google Sheets data."""
+    students = _read_students()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(CSV_HEADER)
+    for s in students:
+        writer.writerow([
+            s.get('name_id', ''),
+            s.get('email_id', ''),
+            s.get('department_id', ''),
+            s.get('nim_id', ''),
+            s.get('score', 0),
+            s.get('job_id_list', ''),
+            s.get('password', '')
+        ])
+    csv_content = output.getvalue()
+    return Response(
+        csv_content,
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=student_data.csv'}
+    )
 
 
 @app.route('/api/export/sql')
 @login_required
 def export_sql():
-    """Download student_data.sql."""
-    _write_sql()
-    return send_file(STUDENT_SQL, as_attachment=True, download_name='student_data.sql')
+    """Generate and download student_data.sql from Google Sheets data."""
+    students = _read_students()
+    lines = ['-- Student Data INSERT statements\n']
+    lines.append(f'-- Generated on {datetime.datetime.now().isoformat()}\n\n')
+    for s in students:
+        name = s['name_id'].replace("'", "''")
+        email = s.get('email_id', '').replace("'", "''")
+        nim = s['nim_id'].replace("'", "''")
+        job = s.get('job_id_list', '').replace("'", "''")
+        pwd = s.get('password', '').replace("'", "''")
+        lines.append(
+            f"INSERT INTO student_data (name_id, email_id, department_id, nim_id, score, job_id_list, password) "
+            f"VALUES ('{name}', '{email}', {s['department_id']}, '{nim}', {s['score']}, '{job}', '{pwd}');\n"
+        )
+    sql_content = ''.join(lines)
+    return Response(
+        sql_content,
+        mimetype='text/sql',
+        headers={'Content-Disposition': 'attachment; filename=student_data.sql'}
+    )
 
 
 @app.route('/api/export/sheets', methods=['POST'])
 @login_required
 def export_sheets():
-    """Send student_data.csv to Google Sheets via Web App URL."""
-    _ensure_csv()
-    try:
-        with open(STUDENT_CSV, 'r', encoding='utf-8') as f:
-            csv_string = f.read()
+    """Data is already in Google Sheets — this is now a no-op confirmation."""
+    return jsonify({'message': 'Data is already synced with Google Sheets!'}), 200
 
-        response = requests.post(WEB_APP_URL, data={'csv_data': csv_string})
-
-        if response.status_code == 200:
-            return jsonify({'message': 'Data sent to Google Sheets successfully!'}), 200
-        else:
-            err_msg = response.text
-            if '<html' in err_msg.lower():
-                err_msg = "Google Apps Script URL returned an HTML error page. Please check the URL and deployment settings."
-            return jsonify({'error': f'Failed to send: {err_msg}'}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 # ── Run ──────────────────────────────────────────────
 if __name__ == '__main__':
-    _ensure_csv()
-    _ensure_task_csv()
     app.run(debug=True, port=5000)
-
