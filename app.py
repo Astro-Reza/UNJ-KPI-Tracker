@@ -4,6 +4,7 @@ International Office Student Registration & Task Management
 """
 
 import os
+import shutil
 import csv
 import json
 import datetime
@@ -37,7 +38,23 @@ WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz0m7XTeCG404waRV07RmZJWT
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE_DIR = os.path.join(BASE_DIR, 'database')
+
+if os.environ.get('VERCEL') == '1':
+    # Vercel serverless functions have a read-only filesystem except for /tmp
+    DATABASE_DIR = '/tmp/database'
+    os.makedirs(DATABASE_DIR, exist_ok=True)
+    
+    # Copy initial database files to /tmp if they don't exist yet
+    original_db_dir = os.path.join(BASE_DIR, 'database')
+    if os.path.exists(original_db_dir):
+        for filename in os.listdir(original_db_dir):
+            dest_file = os.path.join(DATABASE_DIR, filename)
+            src_file = os.path.join(original_db_dir, filename)
+            if not os.path.exists(dest_file) and os.path.isfile(src_file):
+                shutil.copy2(src_file, dest_file)
+else:
+    DATABASE_DIR = os.path.join(BASE_DIR, 'database')
+
 STUDENT_CSV = os.path.join(DATABASE_DIR, 'student_data.csv')
 STUDENT_SQL = os.path.join(DATABASE_DIR, 'student_data.sql')
 TASK_CSV = os.path.join(DATABASE_DIR, 'task_data.csv')
