@@ -103,7 +103,7 @@
                 <div class="brand-title">International Office Volunteer Team KPI Dashboard</div>
             </div>
             <div class="nav-top-right">
-                <div class="date-section">Sunday, 8 March 2026</div>
+                <div class="date-section" id="live-date">Sunday, 8 March 2026</div>
                 <a href="{{ url_for('logout') }}" class="logout-btn">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -278,5 +278,13 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/kanban.js') }}"></script>
+<script>
+    // Live date for top header
+    const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    const dateHeader = document.getElementById('live-date');
+    if (dateHeader) {
+        dateHeader.textContent = new Date().toLocaleDateString('en-US', dateOptions);
+    }
+</script>
 </body>
 </html>
