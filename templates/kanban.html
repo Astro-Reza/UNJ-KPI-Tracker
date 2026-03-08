@@ -279,12 +279,12 @@
 
     <script src="{{ url_for('static', filename='js/kanban.js') }}"></script>
 <script>
-    // Live date for top header
-    const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    const dateHeader = document.getElementById('live-date');
-    if (dateHeader) {
-        dateHeader.textContent = new Date().toLocaleDateString('en-US', dateOptions);
-    }
+    // Live date for top header — pinned to Jakarta time (UTC+7)
+    (function() {
+        const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Jakarta' };
+        const el = document.getElementById('live-date');
+        if (el) el.textContent = new Date().toLocaleDateString('en-US', opts);
+    })();
 </script>
 </body>
 </html>

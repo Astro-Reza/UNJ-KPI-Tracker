@@ -63,7 +63,7 @@ form.addEventListener('submit', async (e) => {
 const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    const opts = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+    const opts = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' };
     return date.toLocaleDateString('en-GB', opts);
 };
 

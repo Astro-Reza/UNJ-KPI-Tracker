@@ -779,6 +779,14 @@
         let students = {{ students_json | safe }};
     </script>
     <script src="{{ url_for('static', filename='js/database.js') }}"></script>
+<script>
+    // Live date for top header — pinned to Jakarta time (UTC+7)
+    (function() {
+        const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Jakarta' };
+        const el = document.getElementById('live-date');
+        if (el) el.textContent = new Date().toLocaleDateString('en-US', opts);
+    })();
+</script>
 </body>
 
 </html>
