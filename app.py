@@ -380,6 +380,7 @@ def logout():
 # ── Routes ───────────────────────────────────────────
 
 @app.route('/')
+@login_required
 def index():
     tasks = _read_tasks()
     students = _read_students()
