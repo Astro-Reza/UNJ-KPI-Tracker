@@ -36,7 +36,7 @@ def login_required(f):
     return decorated_function
 
 # ── Google Sheets API URL ────────────────────────────
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz0m7XTeCG404waRV07RmZJWTut-hSb_FpTOMQWQsPWlUZXMBrHctk_o2E2E9zVDlqXnw/exec"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxsaxXPZo4spsrn1SGP9ViluzsVeniAYlOsMpeCD6a-gGlNH-QRUhjsJO64GV3J4csx2A/exec"
 
 # Column headers (used for CSV export generation)
 CSV_HEADER = ['name_id', 'email_id', 'department_id', 'nim_id', 'score', 'job_id_list', 'password']
