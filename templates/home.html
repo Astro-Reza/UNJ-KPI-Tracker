@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - Volunteer Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='sources/icon/SITE-ICON.svg') }}">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <style>
+        :root {
+            --dark-green: #006369;
+            --yellow: #FFDD00;
+            --red: #CD1F2F;
+            --light-green: #00C3CF;
+            --inactive-teal: #78A7AB;
+        }
+
+        /* ── Base Reset ─────────────────────────────────── */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #ffffff;
+        }
+
+        /* ── Page Layout ────────────────────────────────── */
+        .main-container {
+            display: flex;
+            gap: 32px;
+            padding: 40px;
+            justify-content: center;
+        }
+
+        .left-column {
+            flex-shrink: 0;
+        }
+
+        .right-column {
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .task-lists-row {
+            display: flex;
+            gap: 34px;
+            justify-content: space-between;
+        }
+
+        /* ── Header / Navbar ────────────────────────────── */
+        .navbar {
+            background-color: #00919A;
+            color: #ffffff;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 40px;
+            border-bottom: 2px solid rgba(0, 0, 0, 0.15);
+        }
+
+        .brand-section {
+            display: flex;
+            align-items: center;
+        }
+
+        .logo-wrapper {
+            width: 44px;
+            height: 44px;
+            margin-right: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            overflow: hidden;
+        }
+
+        .logo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .brand-title {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+        }
+
+        .nav-top-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .date-section {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .logout-btn {
+            background-color: rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .logout-btn:hover {
+            background-color: rgba(255, 255, 255, 0.25);
+            border-color: #ffffff;
+            transform: scale(0.98);
+        }
+
+        .logout-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .nav-bottom {
+            padding: 14px 40px;
+            display: flex;
+            align-items: center;
+        }
+
+        .menu-container {
+            display: flex;
+            gap: 48px;
+            margin-left: 60px;
+        }
+
+        .nav-item {
+            color: rgba(255, 255, 255, 0.85);
+            text-decoration: none;
+            font-size: 15px;
+            font-weight: 400;
+            transition: color 0.2s ease, font-weight 0.2s ease;
+        }
+
+        .nav-item:hover {
+            color: #ffffff;
+        }
+
+        .nav-item.active {
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        /* ── Leaderboard Widget ─────────────────────────── */
+        .leaderboard-widget {
+            width: 340px;
+            display: flex;
+            flex-direction: column;
+            filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.1));
+        }
+
+        .top-card {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 24px;
+            padding-bottom: 45px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #555;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .header-title img {
+            width: 14px;
+            height: 14px;
+        }
+
+        .overall-winner {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }
+
+        .overall-winner .name {
+            font-size: 16px;
+            font-weight: 800;
+            color: #333;
+            max-width: 80%;
+            line-height: 1.2;
+        }
+
+        .overall-winner .score {
+            font-size: 20px;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .department-item {
+            margin-bottom: 12px;
+        }
+
+        .department-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .department-name {
+            font-size: 10px;
+            font-weight: 700;
+            color: #666;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .department-winner {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            color: #555;
+        }
+
+        .bottom-card {
+            background-color: #006369;
+            color: #ffffff;
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: -25px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .projects-header {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.8);
+            display: inline-block;
+        }
+
+        .project-item {
+            margin-bottom: 24px;
+        }
+
+        .project-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .project-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .progress-track {
+            background-color: #ffffff;
+            height: 6px;
+            border-radius: 4px;
+            width: 100%;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+
+        .progress-fill {
+            background-color: #FFDD00;
+            height: 100%;
+            border-radius: 4px;
+        }
+
+        .project-dates {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .date-block {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .date-block.right {
+            text-align: right;
+        }
+
+        .date-label {
+            margin-bottom: 2px;
+        }
+
+        .date-value {
+            font-weight: 700;
+        }
+
+        /* ── Job Management ─────────────────────────────── */
+        .dashboard-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-bar {
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+            margin-bottom: 24px;
+            height: 40px;
+        }
+
+        .search-group {
+            display: flex;
+            flex-grow: 1;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .search-input {
+            background-color: #00919A;
+            color: #ffffff;
+            border: none;
+            padding: 0 16px;
+            width: 100%;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            outline: none;
+        }
+
+        .search-input::placeholder {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .search-btn {
+            background-color: #FFDD00;
+            border: none;
+            padding: 0 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.2s;
+        }
+
+        .search-btn:hover {
+            opacity: 0.9;
+        }
+
+        .search-btn img {
+            width: 18px;
+            height: 18px;
+        }
+
+        .action-btn {
+            background-color: #00919A;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 0 16px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: opacity 0.2s;
+        }
+
+        .action-btn img {
+            width: 16px;
+            height: 16px;
+        }
+
+        .action-btn:hover {
+            opacity: 0.9;
+        }
+
+        .create-btn {
+            background-color: #FFDD00;
+            color: #00919A;
+            border: none;
+            border-radius: 8px;
+            padding: 0 16px;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: opacity 0.2s;
+        }
+
+        .create-btn img {
+            width: 14px;
+            height: 14px;
+        }
+
+        .create-btn:hover {
+            opacity: 0.9;
+        }
+
+        .section-header {
+            color: #00919A;
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .divider {
+            border-bottom: 1px solid rgba(0, 145, 154, 0.3);
+            margin-bottom: 16px;
+        }
+
+        .job-scroll-wrapper {
+            position: relative;
+            height: 280px;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .job-scroll-wrapper::after {
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, 1));
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .job-list {
+            height: 100%;
+            overflow-y: auto;
+            padding-bottom: 50px;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .job-list::-webkit-scrollbar {
+            display: none;
+        }
+
+        .job-card {
+            background-color: #00919A;
+            color: #ffffff;
+            border-radius: 12px;
+            padding: 18px 24px;
+            margin-bottom: 16px;
+        }
+
+        .job-title {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: -0.2px;
+        }
+
+        .card-divider {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+            margin-bottom: 10px;
+        }
+
+        .job-info {
+            display: flex;
+            align-items: center;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .job-timeline {
+            flex: 0 0 50%;
+        }
+
+        .job-type {
+            flex: 0 0 25%;
+        }
+
+        .job-contributors {
+            flex: 0 0 25%;
+        }
+
+        /* ── Task List Widget ───────────────────────────── */
+        .task-widget {
+            width: 383px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-task {
+            width: 100%;
+            height: 73.98px;
+            border-radius: 8.473px 8.473px 0 8.473px;
+            background: linear-gradient(90deg, #FFDD00 93.76%, #D5B900 100%);
+            padding: 12px 16px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+            z-index: 10;
+        }
+
+        @keyframes glowWhiteBlack {
+            0% {
+                color: #ffffff;
+                text-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+            }
+
+            50% {
+                color: #000000;
+                text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+            }
+
+            100% {
+                color: #ffffff;
+                text-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+            }
+        }
+
+        .upcoming-label {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+            animation: glowWhiteBlack 2s infinite;
+        }
+
+        .top-task-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #222222;
+            line-height: 1.2;
+            margin-bottom: 2px;
+        }
+
+        .top-task-date {
+            font-size: 11px;
+            font-weight: 400;
+            color: #333333;
+        }
+
+        .list-container {
+            position: relative;
+            margin-top: 8px;
+        }
+
+        .task-scroll-wrapper {
+            position: relative;
+            height: 280px;
+            overflow: hidden;
+        }
+
+        .task-scroll-wrapper::after {
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 70px;
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 1) 100%);
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .task-list {
+            height: 100%;
+            overflow-y: auto;
+            padding-bottom: 60px;
+            padding-right: 12px;
+            scrollbar-width: thin;
+            scrollbar-color: #00919A transparent;
+        }
+
+        .task-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .task-list::-webkit-scrollbar-track {
+            background: transparent;
+            border-left: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .task-list::-webkit-scrollbar-thumb {
+            background-color: #00919A;
+            border-radius: 4px;
+        }
+
+        .task-list::-webkit-scrollbar-thumb:hover {
+            background-color: #007A82;
+        }
+
+        .task-item {
+            background-color: #474747;
+            border-radius: 8.473px;
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .task-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 4px;
+        }
+
+        .task-date {
+            font-size: 11px;
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* ── Advanced Editing Modal (Original task-test) ── */
+        .task-modal {
+            position: fixed;
+            bottom: 0;
+            right: 80px;
+            width: 800px;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+            filter: drop-shadow(0 -5px 20px rgba(0, 0, 0, 0.15));
+            z-index: 2000;
+
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.3s ease,
+                width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                height 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                right 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                bottom 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            transform: translateY(100%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .task-modal.show-modal {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .task-modal.fullscreen-mode {
+            width: 90vw;
+            height: 90vh;
+            right: 5vw;
+            bottom: 5vh;
+        }
+
+        .task-modal.hidden-modal {
+            transform: translateY(100%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .modal-tab-controls {
+            align-self: flex-end;
+            width: 148px;
+            height: 44px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='148' height='44' viewBox='0 0 148 44' fill='none'%3E%3Cpath d='M118.517 0C125.972 0 132.787 5.35006 136.121 13.8197L148 44H0L11.8795 13.8197C15.2133 5.35007 22.028 0 29.4826 0H118.517Z' fill='%23006369'/%3E%3C/svg%3E");
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-position: center bottom;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 12px;
+            margin-right: 24px;
+            position: relative;
+            top: 2px;
+            padding-bottom: 0px;
+        }
+
+        .dot-btn {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            transition: transform 0.2s ease;
+        }
+
+        .dot-btn:hover {
+            transform: scale(1.15);
+        }
+
+        .dot-btn.green { background-color: var(--light-green); }
+        .dot-btn.yellow { background-color: var(--yellow); }
+        .dot-btn.red { background-color: var(--red); }
+
+        .task-modal-body {
+            background-color: var(--dark-green);
+            flex-grow: 1;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            flex-direction: column;
+            color: white;
+            position: relative;
+            overflow-y: auto;
+        }
+        
+        .task-modal-padding {
+            padding: 30px 30px 0 30px;
+        }
+
+        /* Dark Inputs inside Modal */
+        .tm-input-title {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 38px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            width: 100%;
+            font-family: inherit;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.3);
+            transition: border-bottom 0.2s;
+        }
+        .tm-input-title:focus {
+            outline: none;
+            border-bottom: 1px solid white;
+        }
+
+        .tm-dark-input {
+            background: transparent;
+            border: none;
+            color: white;
+            font-family: inherit;
+            font-size: 16px;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.3);
+            margin-bottom: 2px;
+            padding: 2px 0;
+            transition: background 0.2s, border-bottom 0.2s;
+        }
+        .tm-dark-input:focus {
+            outline: none;
+            border-bottom: 1px solid white;
+            background: rgba(255,255,255,0.05);
+        }
+        .tm-dark-input option {
+            background: #1a1a1a;
+            color: white;
+            font-family: inherit;
+        }
+
+        .tm-textarea {
+            width: 100%;
+            background: transparent;
+            border: 1px dashed rgba(255, 255, 255, 0.3);
+            color: white;
+            font-size: 16px;
+            line-height: 1.5;
+            margin: 16px 0;
+            font-weight: 400;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+            padding: 8px;
+            box-sizing: border-box;
+            border-radius: 4px;
+        }
+        .tm-textarea:focus {
+            outline: none;
+            border: 1px solid white;
+            background: rgba(255,255,255,0.05);
+        }
+
+        .pic-box .pic-name-input {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 26px;
+            font-weight: 700;
+            line-height: 1;
+            font-family: inherit;
+            border-bottom: 1px dashed rgba(255,255,255,0.3);
+            width: 100%;
+        }
+        .pic-box .pic-name-input:focus {
+            outline: none;
+            border-bottom: 1px solid white;
+        }
+
+        .task-header-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-grow: 1;
+        }
+
+        .task-header-row h1 {
+            margin: 0;
+            font-size: 38px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .edit-icon {
+            width: 24px;
+            height: 24px;
+            fill: white;
+            cursor: pointer;
+        }
+
+        .progress-track-edit {
+            background-color: white;
+            height: 8px;
+            border-radius: 4px;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+
+        .progress-fill-edit {
+            background-color: var(--yellow);
+            height: 100%;
+            width: 0%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .meta-row {
+            font-size: 16px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .divider-task {
+            height: 1px;
+            background-color: white;
+            border: none;
+            margin: 0;
+            opacity: 1;
+        }
+
+        .description {
+            font-size: 16px;
+            line-height: 1.5;
+            margin: 0;
+            font-weight: 400;
+        }
+
+        .people-row {
+            display: flex;
+            align-items: center;
+            margin: 20px 0 24px 0;
+        }
+
+        .contributors-box {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .person-icon {
+            width: 48px;
+            height: 48px;
+            fill: white;
+        }
+
+        .contributor-text {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .contributor-text .num {
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .contributor-text .label {
+            font-size: 13px;
+            font-weight: 400;
+            margin-top: 4px;
+        }
+
+        .vert-divider {
+            width: 1px;
+            height: 50px;
+            background-color: white;
+            opacity: 0.5;
+            margin: 0 30px;
+        }
+
+        .pic-box {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+
+        .pic-box .pic-label {
+            font-size: 13px;
+            font-style: italic;
+            font-weight: 400;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .pic-box .pic-name {
+            font-size: 26px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .white-workspace {
+            background-color: white;
+            flex-grow: 1;
+            border-radius: 20px 20px 0 0;
+            padding: 30px;
+            color: #1a1a1a;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Table & Toolbar ────────────────────────────── */
+        .workspace-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .btn-ws {
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background-color 0.2s, transform 0.1s;
+            white-space: nowrap;
+        }
+
+        .btn-ws:active {
+            transform: scale(0.97);
+        }
+
+        .btn-primary-ws {
+            background-color: var(--dark-green);
+            color: #fff;
+        }
+        .btn-primary-ws:hover { background-color: #004d52; }
+
+        .btn-danger-ws {
+            background-color: var(--red);
+            color: #fff;
+        }
+        .btn-danger-ws:hover { background-color: #a81724; }
+
+        .btn-ws svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .ws-table-wrapper {
+            background: #fff;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            max-height: 250px;
+        }
+
+        .ws-table-scroll { overflow-y: auto; }
+
+        .ws-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .ws-table thead {
+            background-color: #f8fafc;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+
+        .ws-table th {
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .ws-table tbody tr:nth-child(even) { background-color: #fafbfc; }
+        .ws-table tbody tr:hover { background-color: #f0fdfa; }
+
+        .ws-table td {
+            padding: 10px 16px;
+            font-size: 13px;
+            color: #334155;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .ws-table input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: var(--dark-green);
+        }
+
+        .cell-editable {
+            cursor: text;
+            padding: 4px 6px;
+            border-radius: 4px;
+            min-width: 60px;
+            font-family: inherit;
+            font-size: 13px;
+            border: 1px solid transparent;
+            width: 60px;
+            transition: all 0.2s;
+        }
+        .cell-editable:hover { background-color: #e0f2fe; }
+        .cell-editable:focus {
+            outline: none;
+            border: 1px solid var(--dark-green);
+            background-color: #fff;
+        }
+
+        /* --- MINIMIZED BOTTOM BAR --- */
+        .bottom-bar-wrapper {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            pointer-events: none;
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+            transform: translateY(100%);
+            opacity: 0;
+        }
+
+        .bottom-bar-wrapper.show-bar {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .tabs-container {
+            display: flex;
+            align-items: flex-end;
+            margin-right: 80px;
+            pointer-events: auto;
+            position: relative;
+            margin-bottom: -1px;
+            z-index: 2;
+        }
+
+        .minimized-tab {
+            width: 180px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            color: white;
+            cursor: pointer;
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
+            background-position: bottom center;
+            padding: 0 16px 4px 16px;
+            margin-left: 4px;
+            transition: filter 0.2s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            box-sizing: border-box;
+        }
+        .minimized-tab:hover { filter: brightness(1.1); }
+
+        .minimized-tab.inactive {
+            height: 38px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='44' viewBox='0 0 180 44' fill='none' preserveAspectRatio='none'%3E%3Cpath d='M150.5 0C158 0 164.8 5.3 168.1 13.8L180 44H0L11.9 13.8C15.2 5.3 22 0 29.5 0H150.5Z' fill='%2378A7AB'/%3E%3C/svg%3E");
+            color: rgba(255, 255, 255, 0.9);
+        }
+        .minimized-tab.active {
+            height: 44px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='44' viewBox='0 0 180 44' fill='none' preserveAspectRatio='none'%3E%3Cpath d='M150.5 0C158 0 164.8 5.3 168.1 13.8L180 44H0L11.9 13.8C15.2 5.3 22 0 29.5 0H150.5Z' fill='%23006369'/%3E%3C/svg%3E");
+        }
+
+        .bottom-solid-line {
+            width: 100%;
+            height: 16px;
+            background-color: var(--dark-green);
+            pointer-events: auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ── Create Modal ──────────────────────────────────────── */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: #ffffff;
+            border-radius: 12px;
+            width: 400px;
+            padding: 32px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            font-size: 20px;
+            font-weight: 800;
+            color: #00919A;
+            margin-bottom: 24px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            font-size: 13px;
+            font-weight: 700;
+            color: #444;
+            margin-bottom: 6px;
+        }
+
+        .form-input,
+        .form-select {
+            font-family: inherit;
+            font-size: 14px;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+            border-color: #00919A;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .btn-cancel {
+            background-color: transparent;
+            color: #666;
+            border: none;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: background-color 0.2s;
+        }
+
+        .btn-cancel:hover {
+            background-color: #f0f0f0;
+        }
+
+        .btn-submit {
+            background-color: #FFDD00;
+            color: #00919A;
+            border: none;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 800;
+            cursor: pointer;
+            padding: 8px 24px;
+            border-radius: 8px;
+            transition: opacity 0.2s;
+        }
+
+        .btn-submit:hover {
+            opacity: 0.9;
+        }
+
+        /* ── Custom Sort Dropdown ──────────────────────────── */
+        .dropdown-container {
+            position: relative;
+            display: inline-block;
+            user-select: none;
+            height: 100%;
+        }
+
+        .sort-header {
+            background-color: #00919A;
+            color: white;
+            padding: 0 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-width: 140px;
+            height: 100%;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            box-sizing: border-box;
+            transition: opacity 0.2s;
+        }
+
+        .sort-header:hover {
+            opacity: 0.9;
+        }
+
+        .sort-header-text {
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .sort-icon {
+            width: 14px;
+            height: auto;
+            flex-shrink: 0;
+        }
+
+        .dropdown-body {
+            display: none;
+            position: absolute;
+            top: calc(100% + 5px);
+            left: 0;
+            width: 100%;
+            background-color: #00C3CF;
+            border-radius: 12px;
+            box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
+            z-index: 10;
+            overflow: hidden;
+        }
+
+        .dropdown-body.show {
+            display: block;
+        }
+
+        .dropdown-list {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .dropdown-item {
+            padding: 14px 24px;
+            text-align: left;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s ease;
+        }
+
+        .dropdown-item:not(:last-child) {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .dropdown-item:hover {
+            background-color: #00AFBA;
+        }
+
+        .dropdown-item-text {
+            font-weight: 500;
+        }
+
+        .dropdown-item:hover .dropdown-item-text {
+            font-weight: 700;
+        }
+
+        .dropdown-item.active .dropdown-item-text {
+            font-weight: 700;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ── Header / Navbar ──────────────────────────── -->
+    <nav class="navbar">
+        <div class="nav-top">
+            <div class="brand-section">
+                <div class="logo-wrapper">
+                    <img src="{{ url_for('static', filename='sources/icon/logo_UNJ-cropped.svg') }}" alt="UNJ Logo"
+                        class="logo" onerror="this.style.display='none'">
+                </div>
+                <div class="brand-title">International Office Volunteer Team KPI Dashboard</div>
+            </div>
+            <div class="nav-top-right">
+                <div class="date-section">Sunday, 8 March 2026</div>
+                <a href="{{ url_for('logout') }}" class="logout-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    Log Out
+                </a>
+            </div>
+        </div>
+
+        <div class="nav-bottom">
+            <div class="menu-container">
+                <a href="/" class="nav-item active">Home</a>
+                <a href="/kanban" class="nav-item">Kanban Board</a>
+                <a href="/database" class="nav-item">Database</a>
+                <a href="#" class="nav-item">About</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ── Main Content ─────────────────────────────── -->
+    <div class="main-container">
+
+        <!-- Left Column: Leaderboard -->
+        <div class="left-column">
+            <div class="leaderboard-widget">
+
+                <div class="top-card">
+                    <div class="header-title">
+                        <img src="{{ url_for('static', filename='sources/icon/trophy.svg') }}" alt="Trophy"
+                            onerror="this.style.display='none'">
+                        TOP PERFORMING VOLUNTEER
+                    </div>
+
+                    <div class="overall-winner">
+                        {% if top_overall %}
+                        <div class="name">{{ top_overall.name_id | upper }}</div>
+                        <div class="score">{{ top_overall.score | int }}</div>
+                        {% else %}
+                        <div class="name">—</div>
+                        <div class="score">0</div>
+                        {% endif %}
+                    </div>
+
+                    {% for leader in dept_leaders %}
+                    <div class="department-item">
+                        <div class="department-name">{{ leader.department_name }}</div>
+                        <div class="department-winner">
+                            <span>{{ leader.name }}</span>
+                            <span>{{ leader.score }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="bottom-card">
+                    <div class="projects-header">ON-GOING PROJECTS</div>
+
+                    {% if ongoing_projects %}
+                    {% for task in ongoing_projects %}
+                    <div class="project-item">
+                        <div class="project-title">{{ task.task_name }}</div>
+                        <div class="progress-track">
+                            <div class="progress-fill" style="width: {{ (task.status_id * 25) }}%;"></div>
+                        </div>
+                        <div class="project-dates">
+                            <div class="date-block">
+                                <span class="date-label">Project Start</span>
+                                <span class="date-value">{{ task.start_date }}</span>
+                            </div>
+                            <div class="date-block right">
+                                <span class="date-label">Project Ends</span>
+                                <span class="date-value">{{ task.end_date }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="project-item">
+                        <div class="project-title" style="opacity:0.6;">No on-going projects yet</div>
+                    </div>
+                    {% endif %}
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Right Column: Job Management + Task Lists -->
+        <div class="right-column">
+
+            <!-- Job Management -->
+            <div class="dashboard-container">
+                <div class="top-bar">
+                    <div class="search-group">
+                        <input type="text" id="taskSearchInput" class="search-input" placeholder="Search tasks...">
+                        <button class="search-btn">
+                            <img src="{{ url_for('static', filename='sources/icon/search.svg') }}" alt="Search"
+                                onerror="this.style.display='none'">
+                        </button>
+                    </div>
+
+                    <div class="dropdown-container">
+                        <button class="sort-header">
+                            <img class="sort-icon" id="main-sort-icon" src="{{ url_for('static', filename='sources/icon/sort.svg') }}" alt="Sort">
+                            <span class="sort-header-text">Sort</span>
+                        </button>
+
+                        <div class="dropdown-body">
+                            <ul class="dropdown-list">
+                                <li class="dropdown-item"><span class="dropdown-item-text">Letters</span></li>
+                                <li class="dropdown-item"><span class="dropdown-item-text">Contributor</span></li>
+                                <li class="dropdown-item"><span class="dropdown-item-text">Starting Date</span></li>
+                                <li class="dropdown-item active"><span class="dropdown-item-text">End Date</span></li>
+                                <li class="dropdown-item"><span class="dropdown-item-text">Type</span></li>
+                                <li class="dropdown-item"><span class="dropdown-item-text">Status</span></li>
+                                <li class="dropdown-item"><span class="dropdown-item-text">No Sort</span></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <button class="action-btn">
+                        <img src="{{ url_for('static', filename='sources/icon/view.svg') }}" alt="View"
+                            onerror="this.style.display='none'"> View
+                    </button>
+
+                    <button class="create-btn" id="openCreateModalBtn">
+                        Create <img src="{{ url_for('static', filename='sources/icon/plus.svg') }}" alt="Plus"
+                            onerror="this.style.display='none'">
+                    </button>
+                </div>
+
+                <div class="section-header">Added Tasks</div>
+                <div class="divider"></div>
+
+                <div class="job-scroll-wrapper">
+                    <div class="job-list">
+
+                        {% if recent_tasks %}
+                        {% for task in recent_tasks %}
+                        <div class="job-card" 
+                             style="cursor: pointer;"
+                             data-task-id="{{ task.task_id }}"
+                             data-task-name="{{ task.task_name }}"
+                             data-type-id="{{ task.type_id }}"
+                             data-start-date="{{ task.start_date }}"
+                             data-end-date="{{ task.end_date }}"
+                             data-status-id="{{ task.status_id }}"
+                             data-contributor-count="{{ task.contributor_count }}"
+                             data-contributors='{{ task.contributors_list | tojson | safe }}'
+                             data-pic="{{ task.pic }}"
+                             data-related-links="{{ task.related_links }}"
+                             data-description="{{ task.description }}"
+                             onclick="openEditModal(this)">
+                            <div class="job-title">{{ task.task_name }}</div>
+                            <div class="card-divider"></div>
+                            <div class="job-info">
+                                <div class="job-timeline">{{ task.start_date }} – {{ task.end_date }}</div>
+                                <div class="job-type">{{ task.type_name }}</div>
+                                <div class="job-contributors">{{ task.status_name }} · {{ task.contributor_count }} Contributors</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="job-card">
+                            <div class="job-title" style="opacity:0.6;">No tasks created yet</div>
+                        </div>
+                        {% endif %}
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Task Lists Row -->
+            <div class="task-lists-row">
+
+                <!-- Task List 1: UPCOMING PROJECTS -->
+                <div class="task-widget">
+                    <div class="top-task">
+                        <div class="upcoming-label">UPCOMING PROJECTS</div>
+                        {% if upcoming_projects %}
+                        <div class="top-task-title">{{ upcoming_projects[0].task_name }}</div>
+                        <div class="top-task-date">{{ upcoming_projects[0].start_date }}</div>
+                        {% else %}
+                        <div class="top-task-title">No upcoming projects</div>
+                        <div class="top-task-date">—</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="list-container">
+                        <div class="task-scroll-wrapper">
+                            <div class="task-list">
+                                {% for task in upcoming_projects %}
+                                <div class="task-item">
+                                    <div class="task-title">{{ task.task_name }}</div>
+                                    <div class="task-date">{{ task.start_date }} – {{ task.end_date }}</div>
+                                </div>
+                                {% endfor %}
+                                {% if not upcoming_projects %}
+                                <div class="task-item">
+                                    <div class="task-title" style="opacity:0.6;">Nothing here yet</div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Task List 2: MEDIA & DESIGN LOG -->
+                <div class="task-widget">
+                    <div class="top-task">
+                        <div class="upcoming-label">MEDIA &amp; DESIGN LOG</div>
+                        {% if media_log %}
+                        <div class="top-task-title">{{ media_log[0].task_name }}</div>
+                        <div class="top-task-date">{{ media_log[0].start_date }}</div>
+                        {% else %}
+                        <div class="top-task-title">No publications yet</div>
+                        <div class="top-task-date">—</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="list-container">
+                        <div class="task-scroll-wrapper">
+                            <div class="task-list">
+                                {% for task in media_log %}
+                                <div class="task-item">
+                                    <div class="task-title">{{ task.task_name }}</div>
+                                    <div class="task-date">{{ task.start_date }} – {{ task.end_date }}</div>
+                                </div>
+                                {% endfor %}
+                                {% if not media_log %}
+                                <div class="task-item">
+                                    <div class="task-title" style="opacity:0.6;">Nothing here yet</div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── Create Task Modal ────────────────────────── -->
+    <div class="modal-overlay" id="createTaskModal">
+        <div class="modal-content">
+            <div class="modal-header">Create New Task</div>
+            <form id="createTaskForm">
+                <div class="form-group">
+                    <label class="form-label">Task Name</label>
+                    <input type="text" class="form-input" required placeholder="Enter task name...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Task Type</label>
+                    <select class="form-select" required>
+                        <option value="1">Publication</option>
+                        <option value="2">Event</option>
+                        <option value="3">Camp</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Start Date</label>
+                    <input type="date" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">End Date</label>
+                    <input type="date" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" required>
+                        <option value="1">Planning</option>
+                        <option value="2">In-Progress</option>
+                        <option value="3">Execution</option>
+                        <option value="4">Documentation</option>
+                        <option value="5">Lecturer Review</option>
+                        <option value="6">Done</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" id="closeModalBtn">Cancel</button>
+                    <button type="submit" class="btn-submit">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── Edit Task Modal (New Version) ──────────────────────────── -->
+    <div class="task-modal" id="taskModal" data-task-id="">
+        <div class="modal-tab-controls">
+            <button class="dot-btn green" title="Toggle Fullscreen" onclick="toggleFullscreen()"></button>
+            <button class="dot-btn yellow" title="Minimize" onclick="minimizeApp()"></button>
+            <button class="dot-btn red" title="Close" onclick="closeApp()"></button>
+        </div>
+
+        <div class="task-modal-body">
+            <div class="task-modal-padding">
+                <div class="task-header-row">
+                    <input type="text" class="tm-input-title" id="tm-title-input" value="Batavia Camp 2026">
+                </div>
+
+                <div class="progress-track-edit">
+                    <div class="progress-fill-edit" id="tm-progress"></div>
+                </div>
+
+                <div class="meta-row">
+                    <strong><select class="tm-dark-input" id="tm-type-select">
+                        <option value="1">Publication</option>
+                        <option value="2">Event</option>
+                        <option value="3">Camp</option>
+                    </select></strong> | 
+                    <span>
+                        <input type="date" class="tm-dark-input" id="tm-start-date"> – 
+                        <input type="date" class="tm-dark-input" id="tm-end-date"> 
+                    </span> | 
+                    <span><select class="tm-dark-input" id="tm-status-select">
+                        <option value="1">Planning</option>
+                        <option value="2">In-Progress</option>
+                        <option value="3">Execution</option>
+                        <option value="4">Documentation</option>
+                        <option value="5">Lecturer Review</option>
+                        <option value="6">Done</option>
+                    </select></span>
+                </div>
+
+                <hr class="divider-task">
+
+                <div class="description">
+                    <textarea class="tm-textarea" id="tm-desc-input" placeholder="Enter task description here..."></textarea>
+                </div>
+
+                <hr class="divider-task">
+
+                <div class="links-container" style="margin: 16px 0;">
+                    <span style="font-size: 13px; font-style: italic; text-transform: uppercase;">Related Links</span>
+                    <input type="text" class="tm-dark-input tm-links-input" id="tm-links-input" placeholder="Paste Google Drive or other related links here..." style="width: 100%; margin-top: 8px;">
+                </div>
+
+                <hr class="divider-task">
+
+                <div class="people-row">
+                    <div class="contributors-box">
+                        <svg class="person-icon" viewBox="0 0 24 24">
+                            <path
+                                d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                        </svg>
+                        <div class="contributor-text">
+                            <span class="num" id="tm-contributor-count">21</span>
+                            <span class="label">Contributors</span>
+                        </div>
+                    </div>
+
+                    <div class="vert-divider"></div>
+
+                    <div class="pic-box">
+                        <span class="pic-label">PIC</span>
+                        <input type="text" class="pic-name-input" id="tm-pic-input" value="Winona Rasha Janeesa Foo" placeholder="Assignee Name">
+                    </div>
+                </div>
+            </div>
+
+            <div class="white-workspace">
+                <div class="workspace-toolbar">
+                    <button class="btn-ws btn-primary-ws" id="tm-addStudentBtn">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        Add Student
+                    </button>
+                    <button class="btn-ws btn-danger-ws" id="tm-removeStudentBtn">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6l-1 14H6L5 6" />
+                            <path d="M10 11v6" />
+                            <path d="M14 11v6" />
+                            <path d="M9 6V4h6v2" />
+                        </svg>
+                        Remove Selected
+                    </button>
+                    <div style="flex-grow: 1;"></div>
+                    <span style="font-size: 14px; font-weight: 600; color: #64748b;">Assigned Members: <span id="tm-assigned-count">3</span></span>
+                </div>
+
+                <div class="ws-table-wrapper">
+                    <div class="ws-table-scroll">
+                        <table class="ws-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:40px;"><input type="checkbox" id="selectAllMembers"></th>
+                                    <th>Name</th>
+                                    <th>NIM</th>
+                                    <th>Department</th>
+                                    <th>Points</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tm-contributors-tbody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Quick Save Actions -->
+                <div style="display: flex; justify-content: flex-end; margin-top: 20px; gap: 12px;">
+                    <button class="btn-cancel" onclick="closeApp()">Discard</button>
+                    <button class="btn-submit" onclick="saveTaskUpdates()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Minimized Bottom Bar ─────────────────────── -->
+    <div class="bottom-bar-wrapper" id="bottomBar">
+        <div class="tabs-container" id="bottomTabsContainer">
+            <!-- Tabs added dynamically -->
+        </div>
+        <div class="bottom-solid-line"></div>
+    </div>
+
+    <!-- ── Scripts ──────────────────────────────────── -->
+    <script src="{{ url_for('static', filename='js/home.js') }}"></script>
+</body>
+
+</html>

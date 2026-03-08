@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="International Office KPI Dashboard — Student Registration Page">
+    <title>Registration Page — International Office</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='sources/icon/SITE-ICON.svg') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/registration.css') }}">
+</head>
+
+<body>
+
+    <!-- Page Header -->
+    <header class="page-header">
+        <h1>Volunteer Page</h1>
+        <p>International Office — Student Data Entry</p>
+    </header>
+
+    <!-- Registration Form Card -->
+    <main class="form-card">
+        <!-- Tabs -->
+        <div class="tabs" id="authTabs">
+            <button type="button" class="tab-btn active" id="tabSelectTasks">Returning Student</button>
+            <button type="button" class="tab-btn" id="tabRegister">New Student</button>
+        </div>
+
+        <!-- Funnel 1: Registration Form -->
+        <form id="registrationForm" autocomplete="off" class="hidden">
+
+            <!-- Student Name -->
+            <div class="form-group" id="nameGroup">
+                <label for="nameInput">Student Name</label>
+                <input type="text" id="nameInput" placeholder="Enter full name">
+                <span class="error-msg">Error</span>
+            </div>
+
+            <!-- Email Address -->
+            <div class="form-group" id="emailGroup">
+                <label for="emailInput">Email Address</label>
+                <input type="email" id="emailInput" placeholder="e.g. xyz@university.edu">
+                <span class="error-msg">Error</span>
+            </div>
+
+            <!-- Department -->
+            <div class="form-group" id="deptGroup">
+                <label for="departmentSelect">Department</label>
+                <div class="select-wrapper">
+                    <select id="departmentSelect">
+                        <option value="" disabled selected>Select department</option>
+                        <option value="1">Head of International Office</option>
+                        <option value="2">Secretary</option>
+                        <option value="3">Administration</option>
+                        <option value="4">Media &amp; Design</option>
+                        <option value="5">Hospitality</option>
+                        <option value="6">Community Impact</option>
+                    </select>
+                </div>
+                <span class="error-msg">Error</span>
+            </div>
+
+            <!-- Student ID (NIM) -->
+            <div class="form-group" id="nimGroup">
+                <label for="nimInput">Student ID (NIM)</label>
+                <input type="text" id="nimInput" placeholder="e.g. 2301234567">
+                <span class="error-msg">Error</span>
+            </div>
+
+            <!-- Submit -->
+            <button type="submit" class="btn-submit" id="btnSubmit">Register</button>
+        </form>
+
+        <!-- Funnel 2: Login Form for Returning Student -->
+        <form id="loginForm" autocomplete="off">
+            <!-- Student ID (NIM) -->
+            <div class="form-group" id="loginNimGroup">
+                <label for="loginNimInput">Student ID (NIM)</label>
+                <input type="text" id="loginNimInput" placeholder="e.g. 2301234567">
+                <span class="error-msg">Error</span>
+            </div>
+
+            <!-- Password -->
+            <div class="form-group" id="loginPasswordGroup">
+                <label for="loginPasswordInput">Password</label>
+                <input type="password" id="loginPasswordInput" placeholder="Default is your NIM">
+                <span class="error-msg">Error</span>
+            </div>
+
+            <!-- Submit -->
+            <button type="submit" class="btn-submit" id="btnLoginSubmit">View Tasks</button>
+        </form>
+
+        <!-- Funnel 2: Task Selection Container (shown after login) -->
+        <div id="taskSelectionContainer" class="hidden">
+            <div class="student-profile" id="studentProfile">
+                <h3 id="profileName">Name</h3>
+                <p id="profileNim">NIM</p>
+                <p id="profileDept">Department</p>
+            </div>
+
+            <div class="task-list-wrapper">
+                <h4>Available Tasks</h4>
+                <div id="tasksList" class="tasks-checklist">
+                    <!-- Checkboxes injected by JS -->
+                </div>
+            </div>
+
+            <div class="task-actions">
+                <button type="button" class="btn-submit" id="btnSaveTasks">Save Tasks</button>
+                <button type="button" class="btn-secondary" id="btnToggleChangePassword">Change Password</button>
+                <button type="button" class="btn-secondary" id="btnBackToLogin">Back</button>
+            </div>
+
+            <!-- Change Password Section (Hidden by default) -->
+            <form id="changePasswordForm" autocomplete="off" class="hidden" style="margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 24px;">
+                <h4 style="color: #fff; margin-bottom: 16px;">Change Password</h4>
+                
+                <div class="form-group" id="oldPasswordGroup">
+                    <label for="oldPasswordInput">Current Password</label>
+                    <input type="password" id="oldPasswordInput" placeholder="Enter current password">
+                    <span class="error-msg">Error</span>
+                </div>
+
+                <div class="form-group" id="newPasswordGroup">
+                    <label for="newPasswordInput">New Password</label>
+                    <input type="password" id="newPasswordInput" placeholder="Enter new password">
+                    <span class="error-msg">Error</span>
+                </div>
+
+                <div class="form-group" id="confirmPasswordGroup">
+                    <label for="confirmPasswordInput">Confirm New Password</label>
+                    <input type="password" id="confirmPasswordInput" placeholder="Confirm new password">
+                    <span class="error-msg">Error</span>
+                </div>
+
+                <div class="task-actions">
+                    <button type="submit" class="btn-submit" id="btnChangePasswordSubmit">Update Password</button>
+                    <button type="button" class="btn-secondary" id="btnCancelChangePassword">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <div class="toast-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"
+                stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+            </svg>
+        </div>
+        <span id="toastMessage"></span>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/registration.js') }}"></script>
+</body>
+
+</html>

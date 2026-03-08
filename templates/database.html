@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database — Volunteer Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='sources/icon/SITE-ICON.svg') }}">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <style>
+        /* ── Base Reset ─────────────────────────────────── */
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f4f6f9;
+        }
+
+        /* ── Header / Navbar ────────────────────────────── */
+        .navbar {
+            background-color: #00919A;
+            color: #ffffff;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .nav-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 40px;
+            border-bottom: 2px solid rgba(0, 0, 0, 0.15);
+        }
+
+        .brand-section {
+            display: flex;
+            align-items: center;
+        }
+
+        .logo-wrapper {
+            width: 44px;
+            height: 44px;
+            margin-right: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            overflow: hidden;
+        }
+
+        .logo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .brand-title {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+        }
+
+        .nav-top-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .date-section {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .logout-btn {
+            background-color: rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .logout-btn:hover {
+            background-color: rgba(255, 255, 255, 0.25);
+            border-color: #ffffff;
+            transform: scale(0.98);
+        }
+
+        .logout-btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .nav-bottom {
+            padding: 14px 40px;
+            display: flex;
+            align-items: center;
+        }
+
+        .menu-container {
+            display: flex;
+            gap: 48px;
+            margin-left: 60px;
+        }
+
+        .nav-item {
+            color: rgba(255, 255, 255, 0.85);
+            text-decoration: none;
+            font-size: 15px;
+            font-weight: 400;
+            transition: color 0.2s ease, font-weight 0.2s ease;
+        }
+
+        .nav-item:hover {
+            color: #ffffff;
+        }
+
+        .nav-item.active {
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        /* ── Page Container ─────────────────────────────── */
+        .page-container {
+            padding: 32px 40px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .page-title {
+            font-size: 26px;
+            font-weight: 800;
+            color: #1e293b;
+            margin: 0 0 6px 0;
+        }
+
+        .page-subtitle {
+            font-size: 14px;
+            color: #64748b;
+            margin: 0 0 24px 0;
+        }
+
+        /* ── Toolbar ────────────────────────────────────── */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .toolbar-search {
+            flex: 1;
+            min-width: 220px;
+            position: relative;
+        }
+
+        .toolbar-search input {
+            width: 100%;
+            padding: 10px 14px 10px 38px;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            background: #fff;
+            transition: border-color 0.2s;
+        }
+
+        .toolbar-search input:focus {
+            border-color: #00919A;
+        }
+
+        .toolbar-search svg {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 16px;
+            height: 16px;
+            color: #94a3b8;
+        }
+
+        .btn {
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background-color 0.2s, transform 0.1s;
+            white-space: nowrap;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn-primary {
+            background-color: #00919A;
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background-color: #007a82;
+        }
+
+        .btn-danger {
+            background-color: #ef4444;
+            color: #fff;
+        }
+
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+
+        .btn-success {
+            background-color: #10b981;
+            color: #fff;
+        }
+
+        .btn-success:hover {
+            background-color: #059669;
+        }
+
+        .btn-outline {
+            background-color: #fff;
+            color: #334155;
+            border: 1.5px solid #e2e8f0;
+        }
+
+        .btn-outline:hover {
+            background-color: #f8fafc;
+        }
+
+        .btn svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .toolbar-right {
+            display: flex;
+            gap: 10px;
+            margin-left: auto;
+        }
+
+        /* ── Stats Row ──────────────────────────────────── */
+        .stats-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: #fff;
+            border-radius: 10px;
+            padding: 16px 22px;
+            flex: 1;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+            border: 1px solid #e2e8f0;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 800;
+            color: #1e293b;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+
+        /* ── Table ──────────────────────────────────────── */
+        .table-wrapper {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+
+        .table-scroll {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 900px;
+        }
+
+        thead {
+            background-color: #f8fafc;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+
+        thead th {
+            text-align: left;
+            padding: 14px 16px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            border-bottom: 2px solid #e2e8f0;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+
+        thead th:hover {
+            color: #00919A;
+        }
+
+        thead th .sort-icon {
+            display: inline-block;
+            margin-left: 4px;
+            opacity: 0.3;
+            font-size: 10px;
+        }
+
+        thead th.sorted .sort-icon {
+            opacity: 1;
+            color: #00919A;
+        }
+
+        tbody tr {
+            transition: background-color 0.15s;
+        }
+
+        tbody tr:nth-child(even) {
+            background-color: #fafbfc;
+        }
+
+        tbody tr:hover {
+            background-color: #f0fdfa;
+        }
+
+        tbody tr.selected {
+            background-color: #e0f7fa;
+        }
+
+        tbody td {
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #334155;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        tbody td input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #00919A;
+        }
+
+        thead th input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #00919A;
+        }
+
+        .cell-editable {
+            cursor: text;
+            padding: 4px 6px;
+            border-radius: 4px;
+            min-width: 60px;
+            transition: background-color 0.15s;
+        }
+
+        .cell-editable:hover {
+            background-color: #e0f2fe;
+        }
+
+        .cell-editable:focus {
+            outline: 2px solid #00919A;
+            background-color: #fff;
+        }
+
+        .cell-dept-select {
+            font-family: inherit;
+            font-size: 14px;
+            padding: 4px 6px;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 6px;
+            background: #fff;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .cell-dept-select:focus {
+            border-color: #00919A;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .badge-dept {
+            background-color: rgba(0, 145, 154, 0.12);
+            color: #00919A;
+        }
+
+        .table-footer {
+            padding: 14px 16px;
+            font-size: 13px;
+            color: #64748b;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* ── Modal ──────────────────────────────────────── */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.45);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: #ffffff;
+            border-radius: 14px;
+            width: 440px;
+            padding: 32px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #00919A;
+            margin-bottom: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #475569;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .form-input,
+        .form-select {
+            width: 100%;
+            font-family: inherit;
+            font-size: 14px;
+            padding: 10px 12px;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus,
+        .form-select:focus {
+            border-color: #00919A;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+        }
+
+        /* ── Toast ──────────────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 32px;
+            right: 32px;
+            padding: 14px 24px;
+            border-radius: 10px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+            transform: translateY(120px);
+            opacity: 0;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            z-index: 2000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast-success {
+            background: #10b981;
+        }
+
+        .toast-error {
+            background: #ef4444;
+        }
+
+        /* ── Empty State ────────────────────────────────── */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #94a3b8;
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 12px;
+            opacity: 0.4;
+        }
+
+        .empty-state p {
+            font-size: 15px;
+            margin: 0;
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ── Header / Navbar ──────────────────────────── -->
+    <nav class="navbar">
+        <div class="nav-top">
+            <div class="brand-section">
+                <div class="logo-wrapper">
+                    <img src="{{ url_for('static', filename='sources/icon/logo_UNJ-cropped.svg') }}" alt="UNJ Logo"
+                        class="logo" onerror="this.style.display='none'">
+                </div>
+                <div class="brand-title">International Office Volunteer Team KPI Dashboard</div>
+            </div>
+            <div class="nav-top-right">
+                <div class="date-section">Sunday, 8 March 2026</div>
+                <a href="{{ url_for('logout') }}" class="logout-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    Log Out
+                </a>
+            </div>
+        </div>
+
+        <div class="nav-bottom">
+            <div class="menu-container">
+                <a href="/" class="nav-item">Home</a>
+                <a href="/kanban" class="nav-item">Kanban Board</a>
+                <a href="/database" class="nav-item active">Database</a>
+                <a href="#" class="nav-item">About</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ── Page Content ─────────────────────────────── -->
+    <div class="page-container">
+        <h1 class="page-title">Student Database</h1>
+        <p class="page-subtitle">Manage volunteer records — add, edit, delete, and export data.</p>
+
+        <!-- Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">{{ students | length }}</div>
+                <div class="stat-label">Total Students</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statDepts">{{ dept_counts | length }}</div>
+                <div class="stat-label">Departments</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statAvgScore">{{ avg_score }}</div>
+                <div class="stat-label">Average Score</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statTopScore">{{ top_score }}</div>
+                <div class="stat-label">Highest Score</div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <div class="toolbar-search">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input type="text" id="searchInput" placeholder="Search by name, email, NIM...">
+            </div>
+
+            <button class="btn btn-primary" id="btnAddStudent">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add Student
+            </button>
+
+            <button class="btn btn-danger" id="btnDeleteSelected" style="display:none;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14H6L5 6" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M9 6V4h6v2" />
+                </svg>
+                Delete Selected
+            </button>
+
+            <div class="toolbar-right">
+                <button class="btn btn-success" id="btnSave">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                        <polyline points="17 21 17 13 7 13 7 21" />
+                        <polyline points="7 3 7 8 15 8" />
+                    </svg>
+                    Save Changes
+                </button>
+
+                <button class="btn btn-outline" id="btnExportCSV">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    CSV
+                </button>
+
+                <button class="btn btn-outline" id="btnExportSQL">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    SQL
+                </button>
+
+                <button class="btn btn-outline" id="btnExportSheets">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                        <polyline points="10 9 9 9 8 9" />
+                    </svg>
+                    Send to Sheets
+                </button>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="table-wrapper">
+            <div class="table-scroll">
+                <table id="studentTable">
+                    <thead>
+                        <tr>
+                            <th style="width:40px;"><input type="checkbox" id="selectAll"></th>
+                            <th data-sort="index" style="width:50px;"># <span class="sort-icon">▲</span></th>
+                            <th data-sort="name_id">Name <span class="sort-icon">▲</span></th>
+                            <th data-sort="email_id">Email <span class="sort-icon">▲</span></th>
+                            <th data-sort="department_name">Department <span class="sort-icon">▲</span></th>
+                            <th data-sort="nim_id">NIM <span class="sort-icon">▲</span></th>
+                            <th data-sort="score">Score <span class="sort-icon">▲</span></th>
+                            <th data-sort="job_id_list">Assigned Tasks <span class="sort-icon">▲</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                    </tbody>
+                </table>
+            </div>
+            <div class="table-footer">
+                <span id="footerInfo">Showing 0 students</span>
+                <span id="footerSelected"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Add Student Modal ────────────────────────── -->
+    <div class="modal-overlay" id="addModal">
+        <div class="modal-content">
+            <div class="modal-title">Add New Student</div>
+            <form id="addStudentForm">
+                <div class="form-group">
+                    <label class="form-label">Full Name</label>
+                    <input type="text" class="form-input" id="addName" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email Address</label>
+                    <input type="email" class="form-input" id="addEmail" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Department</label>
+                    <select class="form-select" id="addDept" required>
+                        <option value="" disabled selected>Select department</option>
+                        <option value="1">Head of International Office</option>
+                        <option value="2">Secretary</option>
+                        <option value="3">Administration</option>
+                        <option value="4">Media & Design</option>
+                        <option value="5">Hospitality</option>
+                        <option value="6">Community Impact</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Student ID (NIM)</label>
+                    <input type="text" class="form-input" id="addNIM" required>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" id="cancelAdd">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Student</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── Toast ────────────────────────────────────── -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        let students = {{ students_json | safe }};
+    </script>
+    <script src="{{ url_for('static', filename='js/database.js') }}"></script>
+</body>
+
+</html>

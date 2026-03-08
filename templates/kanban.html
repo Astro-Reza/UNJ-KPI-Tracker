@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanban Board - Volunteer Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='sources/icon/SITE-ICON.svg') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --dark-green: #006369;
+            --yellow: #FFDD00;
+            --red: #CD1F2F;
+            --light-green: #00C3CF;
+            --inactive-teal: #78A7AB;
+        }
+        body { margin:0; padding:0; font-family:'Plus Jakarta Sans',sans-serif; background:#ffffff; }
+
+        /* Navbar */
+        .navbar { background-color:#00919A; color:#fff; width:100%; display:flex; flex-direction:column; box-shadow:0 4px 6px rgba(0,0,0,0.1); }
+        .nav-top { display:flex; justify-content:space-between; align-items:center; padding:16px 40px; border-bottom:2px solid rgba(0,0,0,0.15); }
+        .brand-section { display:flex; align-items:center; }
+        .logo-wrapper { width:44px; height:44px; margin-right:16px; display:flex; justify-content:center; align-items:center; border-radius:50%; overflow:hidden; }
+        .logo { width:100%; height:100%; object-fit:cover; }
+        .brand-title { font-size:20px; font-weight:700; letter-spacing:0.2px; }
+        .nav-top-right { display:flex; align-items:center; gap:20px; }
+        .date-section { font-size:16px; font-weight:600; }
+        .logout-btn { background-color:rgba(255,255,255,0.15); color:#fff; border:1px solid rgba(255,255,255,0.3); border-radius:8px; padding:8px 16px; font-family:inherit; font-size:14px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:8px; cursor:pointer; transition:all 0.2s ease; }
+        .logout-btn:hover { background-color:rgba(255,255,255,0.25); border-color:#fff; transform:scale(0.98); }
+        .logout-btn svg { width:16px; height:16px; }
+        .nav-bottom { padding:14px 40px; display:flex; align-items:center; }
+        .menu-container { display:flex; gap:48px; margin-left:60px; }
+        .nav-item { color:rgba(255,255,255,0.85); text-decoration:none; font-size:15px; font-weight:400; transition:color 0.2s ease; }
+        .nav-item:hover { color:#fff; }
+        .nav-item.active { font-weight:700; color:#fff; }
+
+        /* Page */
+        .page-header { padding:32px 40px 0 40px; }
+        .page-title { font-size:26px; font-weight:800; color:#1e293b; margin:0 0 4px 0; }
+        .page-subtitle { font-size:14px; color:#64748b; margin:0; }
+
+        /* Kanban Board */
+        .kanban-board { display:flex; gap:20px; padding:24px 40px 40px 40px; align-items:flex-start; overflow-x:auto; }
+        .kanban-column { flex:1; min-width:260px; display:flex; flex-direction:column; }
+        .column-header { border-radius:10px 10px 0 0; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; }
+        .column-header h3 { margin:0; font-size:15px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; }
+        .column-count { font-size:13px; font-weight:700; opacity:0.8; }
+
+        .col-planning .column-header { background-color:#00919A; color:#fff; }
+        .col-doing .column-header { background:linear-gradient(90deg,#FFDD00 93%,#D5B900 100%); color:#222; }
+        .col-review .column-header { background-color:var(--light-green); color:#fff; }
+        .col-done .column-header { background-color:var(--dark-green); color:#fff; }
+
+        .column-body { background:#f4f6f9; border-radius:0 0 10px 10px; padding:12px; min-height:400px; display:flex; flex-direction:column; gap:12px; }
+
+        /* Cards */
+        .kanban-card { background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,0.07); cursor:pointer; transition:box-shadow 0.2s, transform 0.15s; border-left:4px solid transparent; }
+        .kanban-card:hover { box-shadow:0 4px 14px rgba(0,0,0,0.12); transform:translateY(-2px); }
+        .col-planning .kanban-card { border-left-color:#00919A; }
+        .col-doing .kanban-card { border-left-color:#FFDD00; }
+        .col-review .kanban-card { border-left-color:var(--light-green); }
+        .col-done .kanban-card { border-left-color:var(--dark-green); }
+
+        .card-title { font-size:15px; font-weight:700; color:#1e293b; margin-bottom:8px; line-height:1.3; }
+        .card-meta { font-size:11px; color:#64748b; display:flex; flex-direction:column; gap:4px; }
+        .card-meta span { display:flex; align-items:center; gap:4px; }
+        .card-badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:700; }
+        .badge-publication { background:rgba(0,145,154,0.12); color:#00919A; }
+        .badge-event { background:rgba(255,221,0,0.2); color:#9a8400; }
+        .badge-camp { background:rgba(0,99,105,0.12); color:var(--dark-green); }
+        .card-footer { display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid #f0f0f0; }
+        .card-contributors { font-size:11px; color:#94a3b8; font-weight:600; }
+
+        .empty-col { text-align:center; padding:40px 16px; color:#94a3b8; font-size:13px; font-weight:500; }
+
+        /* Create Modal */
+        .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.5); display:none; justify-content:center; align-items:center; z-index:1000; }
+        .modal-content { background:#fff; border-radius:12px; width:400px; padding:32px; box-shadow:0 10px 25px rgba(0,0,0,0.2); display:flex; flex-direction:column; max-height:90vh; overflow-y:auto; }
+        .modal-header { font-size:20px; font-weight:800; color:#00919A; margin-bottom:24px; }
+        .form-group { display:flex; flex-direction:column; margin-bottom:16px; }
+        .form-label { font-size:13px; font-weight:700; color:#444; margin-bottom:6px; }
+        .form-input,.form-select { font-family:inherit; font-size:14px; padding:10px 12px; border:1px solid #ddd; border-radius:8px; outline:none; transition:border-color 0.2s; }
+        .form-input:focus,.form-select:focus { border-color:#00919A; }
+        .modal-footer { display:flex; justify-content:flex-end; gap:12px; margin-top:24px; }
+        .btn-cancel { background:transparent; color:#666; border:none; font-family:inherit; font-size:14px; font-weight:700; cursor:pointer; padding:8px 16px; border-radius:8px; transition:background 0.2s; }
+        .btn-cancel:hover { background:#f0f0f0; }
+        .btn-submit { background:#FFDD00; color:#00919A; border:none; font-family:inherit; font-size:14px; font-weight:800; cursor:pointer; padding:8px 24px; border-radius:8px; transition:opacity 0.2s; }
+        .btn-submit:hover { opacity:0.9; }
+
+        .create-btn-float { position:fixed; bottom:32px; right:40px; background:#FFDD00; color:#00919A; border:none; border-radius:50px; padding:14px 28px; font-family:inherit; font-size:15px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15); transition:transform 0.2s,box-shadow 0.2s; z-index:50; }
+        .create-btn-float:hover { transform:translateY(-2px); box-shadow:0 6px 24px rgba(0,0,0,0.2); }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-top">
+            <div class="brand-section">
+                <div class="logo-wrapper">
+                    <img src="{{ url_for('static', filename='sources/icon/logo_UNJ-cropped.svg') }}" alt="UNJ Logo" class="logo" onerror="this.style.display='none'">
+                </div>
+                <div class="brand-title">International Office Volunteer Team KPI Dashboard</div>
+            </div>
+            <div class="nav-top-right">
+                <div class="date-section">Sunday, 8 March 2026</div>
+                <a href="{{ url_for('logout') }}" class="logout-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    Log Out
+                </a>
+            </div>
+        </div>
+        <div class="nav-bottom">
+            <div class="menu-container">
+                <a href="/" class="nav-item">Home</a>
+                <a href="/kanban" class="nav-item active">Kanban Board</a>
+                <a href="/database" class="nav-item">Database</a>
+                <a href="#" class="nav-item">About</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-header">
+        <h1 class="page-title">Kanban Board</h1>
+        <p class="page-subtitle">Track task progress across planning, execution, review, and completion stages.</p>
+    </div>
+
+    <div class="kanban-board">
+        <!-- PLANNING -->
+        <div class="kanban-column col-planning">
+            <div class="column-header">
+                <h3><img src="{{ url_for('static', filename='sources/icon/plan.svg') }}" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 6px;" alt="Plan"> Planning</h3>
+                <span class="column-count">{{ planning | length }}</span>
+            </div>
+            <div class="column-body">
+                {% for task in planning %}
+                <div class="kanban-card" data-task-id="{{ task.task_id }}">
+                    <div class="card-title">{{ task.task_name }}</div>
+                    <div class="card-meta">
+                        <span>{{ task.start_date }} – {{ task.end_date }}</span>
+                        <span><span class="card-badge {% if task.type_id == 1 %}badge-publication{% elif task.type_id == 2 %}badge-event{% else %}badge-camp{% endif %}">{{ task.type_name }}</span></span>
+                    </div>
+                    <div class="card-footer">
+                        <span class="card-contributors">{{ task.contributor_count }} contributor{{ 's' if task.contributor_count != 1 else '' }}</span>
+                        {% if task.pic %}<span class="card-contributors">PIC: {{ task.pic }}</span>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not planning %}<div class="empty-col">No tasks in planning</div>{% endif %}
+            </div>
+        </div>
+
+        <!-- DOING -->
+        <div class="kanban-column col-doing">
+            <div class="column-header">
+                <h3><img src="{{ url_for('static', filename='sources/icon/work.svg') }}" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 6px;" alt="Work"> Doing</h3>
+                <span class="column-count">{{ doing | length }}</span>
+            </div>
+            <div class="column-body">
+                {% for task in doing %}
+                <div class="kanban-card" data-task-id="{{ task.task_id }}">
+                    <div class="card-title">{{ task.task_name }}</div>
+                    <div class="card-meta">
+                        <span>{{ task.start_date }} – {{ task.end_date }}</span>
+                        <span><span class="card-badge {% if task.type_id == 1 %}badge-publication{% elif task.type_id == 2 %}badge-event{% else %}badge-camp{% endif %}">{{ task.type_name }}</span> · {{ task.status_name }}</span>
+                    </div>
+                    <div class="card-footer">
+                        <span class="card-contributors">{{ task.contributor_count }} contributor{{ 's' if task.contributor_count != 1 else '' }}</span>
+                        {% if task.pic %}<span class="card-contributors">PIC: {{ task.pic }}</span>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not doing %}<div class="empty-col">No tasks in progress</div>{% endif %}
+            </div>
+        </div>
+
+        <!-- REVIEW -->
+        <div class="kanban-column col-review">
+            <div class="column-header">
+                <h3><img src="{{ url_for('static', filename='sources/icon/search.svg') }}" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 6px;" alt="Review"> Review</h3>
+                <span class="column-count">{{ review | length }}</span>
+            </div>
+            <div class="column-body">
+                {% for task in review %}
+                <div class="kanban-card" data-task-id="{{ task.task_id }}">
+                    <div class="card-title">{{ task.task_name }}</div>
+                    <div class="card-meta">
+                        <span>{{ task.start_date }} – {{ task.end_date }}</span>
+                        <span><span class="card-badge {% if task.type_id == 1 %}badge-publication{% elif task.type_id == 2 %}badge-event{% else %}badge-camp{% endif %}">{{ task.type_name }}</span></span>
+                    </div>
+                    <div class="card-footer">
+                        <span class="card-contributors">{{ task.contributor_count }} contributor{{ 's' if task.contributor_count != 1 else '' }}</span>
+                        {% if task.pic %}<span class="card-contributors">PIC: {{ task.pic }}</span>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not review %}<div class="empty-col">No tasks under review</div>{% endif %}
+            </div>
+        </div>
+
+        <!-- DONE -->
+        <div class="kanban-column col-done">
+            <div class="column-header">
+                <h3><img src="{{ url_for('static', filename='sources/icon/check.svg') }}" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 6px;" alt="Done"> Done</h3>
+                <span class="column-count">{{ done | length }}</span>
+            </div>
+            <div class="column-body">
+                {% for task in done %}
+                <div class="kanban-card" data-task-id="{{ task.task_id }}">
+                    <div class="card-title">{{ task.task_name }}</div>
+                    <div class="card-meta">
+                        <span>{{ task.start_date }} – {{ task.end_date }}</span>
+                        <span><span class="card-badge {% if task.type_id == 1 %}badge-publication{% elif task.type_id == 2 %}badge-event{% else %}badge-camp{% endif %}">{{ task.type_name }}</span></span>
+                    </div>
+                    <div class="card-footer">
+                        <span class="card-contributors">{{ task.contributor_count }} contributor{{ 's' if task.contributor_count != 1 else '' }}</span>
+                        {% if task.pic %}<span class="card-contributors">PIC: {{ task.pic }}</span>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not done %}<div class="empty-col">No completed tasks yet</div>{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Task FAB -->
+    <button class="create-btn-float" id="openCreateModalBtn">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        Create Task
+    </button>
+
+    <!-- Create Task Modal -->
+    <div class="modal-overlay" id="createTaskModal">
+        <div class="modal-content">
+            <div class="modal-header">Create New Task</div>
+            <form id="createTaskForm">
+                <div class="form-group">
+                    <label class="form-label">Task Name</label>
+                    <input type="text" class="form-input" required placeholder="Enter task name...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Task Type</label>
+                    <select class="form-select" required>
+                        <option value="1">Publication</option>
+                        <option value="2">Event</option>
+                        <option value="3">Camp</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Start Date</label>
+                    <input type="date" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">End Date</label>
+                    <input type="date" class="form-input" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select class="form-select" required>
+                        <option value="1">Planning</option>
+                        <option value="2">In-Progress</option>
+                        <option value="3">Execution</option>
+                        <option value="4">Documentation</option>
+                        <option value="5">Lecturer Review</option>
+                        <option value="6">Done</option>
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-cancel" id="closeModalBtn">Cancel</button>
+                    <button type="submit" class="btn-submit">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/kanban.js') }}"></script>
+</body>
+</html>
