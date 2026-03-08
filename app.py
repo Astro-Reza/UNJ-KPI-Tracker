@@ -14,7 +14,9 @@ from flask import Flask, render_template, request, jsonify, send_file, session, 
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
+# IMPORTANT: In a serverless environment like Vercel, os.urandom() will reset the secret key 
+# on every function invocation, logging users out immediately. We use a static fallback.
+app.secret_key = os.environ.get('SECRET_KEY', 'default-static-secret-key-for-dev-only')
 
 # ── Authentication ───────────────────────────────────
 ADMIN_USERNAME = 'admin-cis'
