@@ -493,7 +493,6 @@ def get_students():
 
 
 @app.route('/api/register', methods=['POST'])
-@login_required
 def register_student():
     """Register a new student. Expects JSON body."""
     data = request.get_json()
