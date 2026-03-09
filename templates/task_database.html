@@ -608,32 +608,28 @@
 
     <!-- ── Page Content ─────────────────────────────── -->
     <div class="page-container">
-        <h1 class="page-title">Student Database</h1>
-        <p class="page-subtitle">Manage volunteer records — add, edit, delete, and export data.</p>
+        <h1 class="page-title">Tasks Database</h1>
+        <p class="page-subtitle">View and Search all tasks.</p>
 
         <!-- Database Tabs -->
         <div style="display: flex; gap: 12px; margin-bottom: 24px;">
-            <a href="/database" style="padding: 8px 16px; background: #00919A; color: white; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 700;">Students Database</a>
-            <a href="/database/tasks" style="padding: 8px 16px; background: #fff; color: #475569; border: 1.5px solid #e2e8f0; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; transition: background 0.2s;">Tasks Database</a>
+            <a href="/database" style="padding: 8px 16px; background: #fff; color: #475569; border: 1.5px solid #e2e8f0; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; transition: background 0.2s;">Students Database</a>
+            <a href="/database/tasks" style="padding: 8px 16px; background: #00919A; color: white; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 700;">Tasks Database</a>
         </div>
 
         <!-- Stats -->
         <div class="stats-row">
             <div class="stat-card">
-                <div class="stat-value" id="statTotal">{{ students | length }}</div>
-                <div class="stat-label">Total Students</div>
+                <div class="stat-value" id="statTotal">{{ tasks | length }}</div>
+                <div class="stat-label">Total Tasks</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" id="statDepts">{{ dept_counts | length }}</div>
-                <div class="stat-label">Departments</div>
+                <div class="stat-value" id="statFinished">{{ status_counts.get(7, 0) + status_counts.get(6, 0) }}</div>
+                <div class="stat-label">Done / Finished</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value" id="statAvgScore">{{ avg_score }}</div>
-                <div class="stat-label">Average Score</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="statTopScore">{{ top_score }}</div>
-                <div class="stat-label">Highest Score</div>
+                <div class="stat-value" id="statInProgress">{{ status_counts.get(2, 0) + status_counts.get(3, 0) }}</div>
+                <div class="stat-label">In Progress / Execution</div>
             </div>
         </div>
 
@@ -645,40 +641,11 @@
                     <circle cx="11" cy="11" r="8" />
                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <input type="text" id="searchInput" placeholder="Search by name, email, NIM...">
+                <input type="text" id="searchInput" placeholder="Search by task name, PIC...">
             </div>
 
-            <button class="btn btn-primary" id="btnAddStudent">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Add Student
-            </button>
-
-            <button class="btn btn-danger" id="btnDeleteSelected" style="display:none;">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6l-1 14H6L5 6" />
-                    <path d="M10 11v6" />
-                    <path d="M14 11v6" />
-                    <path d="M9 6V4h6v2" />
-                </svg>
-                Delete Selected
-            </button>
-
             <div class="toolbar-right">
-                <button class="btn btn-success" id="btnSave">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                        <polyline points="17 21 17 13 7 13 7 21" />
-                        <polyline points="7 3 7 8 15 8" />
-                    </svg>
-                    Save Changes
-                </button>
+                <!-- Save Changes removed for tasks -->
 
                 <button class="btn btn-outline" id="btnExportCSV">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -717,17 +684,16 @@
         <!-- Data Table -->
         <div class="table-wrapper">
             <div class="table-scroll">
-                <table id="studentTable">
+                <table id="taskTable">
                     <thead>
                         <tr>
-                            <th style="width:40px;"><input type="checkbox" id="selectAll"></th>
                             <th data-sort="index" style="width:50px;"># <span class="sort-icon">▲</span></th>
-                            <th data-sort="name_id">Name <span class="sort-icon">▲</span></th>
-                            <th data-sort="email_id">Email <span class="sort-icon">▲</span></th>
-                            <th data-sort="department_name">Department <span class="sort-icon">▲</span></th>
-                            <th data-sort="nim_id">NIM <span class="sort-icon">▲</span></th>
-                            <th data-sort="score">Score <span class="sort-icon">▲</span></th>
-                            <th data-sort="job_id_list">Assigned Tasks <span class="sort-icon">▲</span></th>
+                            <th data-sort="task_name">Task Name <span class="sort-icon">▲</span></th>
+                            <th data-sort="type_name">Type <span class="sort-icon">▲</span></th>
+                            <th data-sort="status_name">Status <span class="sort-icon">▲</span></th>
+                            <th data-sort="start_date">Start Date <span class="sort-icon">▲</span></th>
+                            <th data-sort="end_date">End Date <span class="sort-icon">▲</span></th>
+                            <th data-sort="pic">PIC <span class="sort-icon">▲</span></th>
                         </tr>
                     </thead>
                     <tbody id="tableBody">
@@ -735,56 +701,20 @@
                 </table>
             </div>
             <div class="table-footer">
-                <span id="footerInfo">Showing 0 students</span>
-                <span id="footerSelected"></span>
+                <span id="footerInfo">Showing 0 tasks</span>
             </div>
         </div>
     </div>
 
-    <!-- ── Add Student Modal ────────────────────────── -->
-    <div class="modal-overlay" id="addModal">
-        <div class="modal-content">
-            <div class="modal-title">Add New Student</div>
-            <form id="addStudentForm">
-                <div class="form-group">
-                    <label class="form-label">Full Name</label>
-                    <input type="text" class="form-input" id="addName" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Email Address</label>
-                    <input type="email" class="form-input" id="addEmail" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Department</label>
-                    <select class="form-select" id="addDept" required>
-                        <option value="" disabled selected>Select department</option>
-                        <option value="1">Head of International Office</option>
-                        <option value="2">Secretary</option>
-                        <option value="3">Administration</option>
-                        <option value="4">Media & Design</option>
-                        <option value="5">Hospitality</option>
-                        <option value="6">Community Impact</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Student ID (NIM)</label>
-                    <input type="text" class="form-input" id="addNIM" required>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline" id="cancelAdd">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Add Student</button>
-                </div>
-            </form>
-        </div>
-    </div>
+    <!-- Add Modal removed for tasks -->
 
     <!-- ── Toast ────────────────────────────────────── -->
     <div class="toast" id="toast"></div>
 
     <script>
-        let students = {{ students_json | safe }};
+        let tasks = {{ tasks_json | safe }};
     </script>
-    <script src="{{ url_for('static', filename='js/database.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/task_database.js') }}"></script>
 <script>
     // Live date for top header — pinned to Jakarta time (UTC+7)
     (function() {

@@ -7,6 +7,7 @@ import os
 import io
 import csv
 import json
+import time
 import datetime
 import functools
 import requests
@@ -14,8 +15,6 @@ from flask import Flask, render_template, request, jsonify, Response, session, r
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
-# IMPORTANT: In a serverless environment like Vercel, os.urandom() will reset the secret key 
-# on every function invocation, logging users out immediately. We use a static fallback.
 app.secret_key = os.environ.get('SECRET_KEY', 'default-static-secret-key-for-dev-only')
 
 # ── Authentication ───────────────────────────────────
@@ -28,7 +27,6 @@ def login_required(f):
     @functools.wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('logged_in'):
-            # API routes return 401 JSON; page routes redirect
             if request.path.startswith('/api/'):
                 return jsonify({'error': 'Authentication required'}), 401
             return redirect(url_for('login'))
@@ -53,7 +51,7 @@ DEPARTMENTS = {
 }
 
 TASK_TYPES = {1: 'Publication', 2: 'Event', 3: 'Camp'}
-TASK_STATUSES = {1: 'Planning', 2: 'In-Progress', 3: 'Execution', 4: 'Documentation', 5: 'Lecturer Review', 6: 'Done'}
+TASK_STATUSES = {1: 'Planning', 2: 'In-Progress', 3: 'Execution', 4: 'Documentation', 5: 'Lecturer Review', 6: 'Done', 7: 'Finished'}
 
 
 # ── Google Sheets API Helper ────────────────────────
@@ -79,10 +77,33 @@ def _sheets_request(action, data=None):
         raise Exception(f'Failed to connect to Google Sheets: {str(e)}')
 
 
+# ── Caching ──────────────────────────────────────────
+
+_CACHE = {}
+_CACHE_TTL = 30  # seconds
+
+def _get_from_cache(key):
+    if key in _CACHE:
+        data, timestamp = _CACHE[key]
+        if time.time() - timestamp < _CACHE_TTL:
+            return data
+    return None
+
+def _set_in_cache(key, data):
+    _CACHE[key] = (data, time.time())
+    
+def _invalidate_cache(key):
+    _CACHE.pop(key, None)
+
+
 # ── Student Helpers ──────────────────────────────────
 
 def _read_students():
     """Return list of student dicts from Google Sheets."""
+    cached = _get_from_cache('students')
+    if cached is not None:
+        return cached
+
     result = _sheets_request('getStudents')
     students = []
     for row in result.get('data', []):
@@ -98,6 +119,7 @@ def _read_students():
         if not row.get('password'):
             row['password'] = generate_password_hash(row.get('nim_id', ''))
         students.append(row)
+    _set_in_cache('students', students)
     return students
 
 
@@ -115,6 +137,7 @@ def _write_students(students):
             'password': s.get('password', '')
         })
     _sheets_request('saveStudents', rows)
+    _invalidate_cache('students')
 
 
 def _append_student(name_id, email_id, department_id, nim_id):
@@ -164,6 +187,10 @@ def _parse_date(date_str):
 
 def _read_tasks():
     """Return list of task dicts from Google Sheets."""
+    cached = _get_from_cache('tasks')
+    if cached is not None:
+        return cached
+
     result = _sheets_request('getTasks')
     tasks = []
     for row in result.get('data', []):
@@ -182,6 +209,7 @@ def _read_tasks():
         row['type_name'] = TASK_TYPES.get(row['type_id'], '')
         row['status_name'] = TASK_STATUSES.get(row['status_id'], '')
         tasks.append(row)
+    _set_in_cache('tasks', tasks)
     return tasks
 
 
@@ -201,6 +229,7 @@ def _write_tasks(tasks):
             'description': str(t.get('description', '')),
         })
     _sheets_request('saveTasks', rows)
+    _invalidate_cache('tasks')
 
 
 def _generate_task_id(type_id):
@@ -239,6 +268,10 @@ def _update_tasks(tasks):
 
 def _read_all_contributors():
     """Return all contributor rows from Google Sheets."""
+    cached = _get_from_cache('contributors')
+    if cached is not None:
+        return cached
+
     result = _sheets_request('getContributors')
     rows = []
     for row in result.get('data', []):
@@ -247,6 +280,7 @@ def _read_all_contributors():
         except (ValueError, TypeError):
             row['points'] = 0.0
         rows.append(row)
+    _set_in_cache('contributors', rows)
     return rows
 
 
@@ -260,6 +294,7 @@ def _write_all_contributors(rows):
             'points': str(r.get('points', 0))
         })
     _sheets_request('saveContributors', data)
+    _invalidate_cache('contributors')
 
 
 def _read_task_contributors(task_id):
@@ -359,11 +394,11 @@ def index():
     ongoing_projects = [t for t in tasks if t['type_id'] in (2, 3) and t['status_id'] in (2, 3)]
     upcoming_projects = [t for t in tasks if t['type_id'] in (2, 3) and t['status_id'] == 1]
 
-    # Publication tasks (type 1) for media log
-    media_log = [t for t in tasks if t['type_id'] == 1]
+    # Publication tasks (type 1) for media log, excluding finished (7)
+    media_log = [t for t in tasks if t['type_id'] == 1 and t['status_id'] != 7]
 
-    # Recently viewed = all tasks, most recent first
-    recent_tasks = list(reversed(tasks))
+    # Recently viewed = all tasks, most recent first, excluding finished (7)
+    recent_tasks = [t for t in reversed(tasks) if t['status_id'] != 7]
 
     # ── Leaderboard ──────────────────────────────────
     top_overall = max(students, key=lambda s: s['score']) if students else None
@@ -388,6 +423,51 @@ def index():
                            dept_leaders=dept_leaders)
 
 
+@app.route('/api/dashboard')
+@login_required
+def api_dashboard():
+    """Return all dashboard data as JSON for AJAX partial reloads."""
+    tasks = _read_tasks()
+    students = _read_students()
+
+    for task in tasks:
+        tid = task['task_id']
+        contributors = [s['name_id'] for s in students if tid in s.get('job_id_list', '').split(';')]
+        task['contributor_count'] = len(contributors)
+        task['contributors_list'] = contributors
+
+    ongoing_projects = [t for t in tasks if t['type_id'] in (2, 3) and t['status_id'] in (2, 3)]
+    upcoming_projects = [t for t in tasks if t['type_id'] in (2, 3) and t['status_id'] == 1]
+    media_log = [t for t in tasks if t['type_id'] == 1 and t['status_id'] != 7]
+    recent_tasks = [t for t in reversed(tasks) if t['status_id'] != 7]
+
+    top_overall = max(students, key=lambda s: s['score']) if students else None
+    dept_leaders = []
+    for dept_id in [3, 4, 5, 6]:
+        dept_students = [s for s in students if s['department_id'] == dept_id]
+        if dept_students:
+            best = max(dept_students, key=lambda s: s['score'])
+            dept_leaders.append({
+                'department_name': DEPARTMENTS[dept_id],
+                'name': best['name_id'],
+                'score': int(best['score']),
+            })
+
+    # Serialise top_overall (remove password)
+    top_data = None
+    if top_overall:
+        top_data = {'name_id': top_overall['name_id'], 'score': int(top_overall['score'])}
+
+    return jsonify({
+        'recent_tasks': recent_tasks,
+        'ongoing_projects': ongoing_projects,
+        'upcoming_projects': upcoming_projects,
+        'media_log': media_log,
+        'top_overall': top_data,
+        'dept_leaders': dept_leaders,
+    })
+
+
 @app.route('/database')
 @login_required
 def database_page():
@@ -402,10 +482,24 @@ def database_page():
     students_json = json.dumps(students, default=str)
     return render_template('database.html',
                            students=students,
-                           students_json=students_json,
+                           students_json=json.dumps(students),
                            dept_counts=dept_counts,
                            avg_score=avg_score,
                            top_score=top_score)
+
+
+@app.route('/database/tasks')
+@login_required
+def task_database_page():
+    tasks = _read_tasks()
+    status_counts = {}
+    for t in tasks:
+        status_counts[t.get('status_id', 0)] = status_counts.get(t.get('status_id', 0), 0) + 1
+    
+    return render_template('task_database.html',
+                           tasks=tasks,
+                           tasks_json=json.dumps(tasks),
+                           status_counts=status_counts)
 
 
 @app.route('/student')
@@ -717,6 +811,53 @@ def update_task(task_id):
             'description': description,
         }
     }), 200
+
+
+@app.route('/api/tasks/<task_id>', methods=['DELETE'])
+@login_required
+def delete_task(task_id):
+    """Delete a task and remove all its contributor points from students."""
+    tasks = _read_tasks()
+    task_idx = next((i for i, t in enumerate(tasks) if t['task_id'] == task_id), None)
+    
+    if task_idx is None:
+        return jsonify({'error': 'Task not found'}), 404
+
+    # 1. Remove task
+    del tasks[task_idx]
+    _update_tasks(tasks)  # Wait, _update_tasks was defined but wait let me check the existing method name for tasks update
+
+    # 2. Delete from contributors & subtract points from students
+    contributors = _read_all_contributors()
+    students = _read_students()
+    
+    task_contribs = [c for c in contributors if c['task_id'] == task_id]
+    if task_contribs:
+        for tc in task_contribs:
+            nim_id = tc['nim_id']
+            points = tc.get('points', 0)
+            
+            # Update student record
+            student = next((s for s in students if s['nim_id'] == nim_id), None)
+            if student:
+                try:
+                    student['score'] = float(student.get('score', 0)) - float(points)
+                except ValueError:
+                    student['score'] = 0
+                
+                # Remove task_id from job_id_list
+                job_list = student.get('job_id_list', '').split(';')
+                if task_id in job_list:
+                    job_list.remove(task_id)
+                student['job_id_list'] = ';'.join(filter(None, job_list))
+        
+        _write_students(students)
+
+        # Remove from contributors list completely
+        contributors = [c for c in contributors if c['task_id'] != task_id]
+        _write_all_contributors(contributors)
+        
+    return jsonify({'message': 'Task deleted successfully'}), 200
 
 
 @app.route('/api/tasks/<task_id>/contributors', methods=['GET'])

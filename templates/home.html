@@ -1335,6 +1335,51 @@
         .dropdown-item.active .dropdown-item-text {
             font-weight: 700;
         }
+
+        /* ── Sync Toast Notification ────────────────────── */
+        .sync-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), opacity 0.25s ease;
+            pointer-events: none;
+        }
+        .sync-toast.show {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .sync-toast.syncing { background: #00919A; }
+        .sync-toast.success { background: #22c55e; }
+        .sync-toast.error   { background: #ef4444; cursor: pointer; }
+
+        .sync-spinner {
+            width: 18px; height: 18px;
+            border: 2.5px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: syncSpin 0.7s linear infinite;
+        }
+        @keyframes syncSpin { to { transform: rotate(360deg); } }
+
+        .sync-icon {
+            width: 18px; height: 18px;
+            fill: none; stroke: #fff; stroke-width: 2.5;
+            stroke-linecap: round; stroke-linejoin: round;
+        }
     </style>
 </head>
 
@@ -1760,9 +1805,16 @@
                 </div>
                 
                 <!-- Quick Save Actions -->
-                <div style="display: flex; justify-content: flex-end; margin-top: 20px; gap: 12px;">
-                    <button class="btn-cancel" onclick="closeApp()">Discard</button>
-                    <button class="btn-submit" onclick="saveTaskUpdates()">Save Changes</button>
+                <div style="display: flex; justify-content: flex-end; margin-top: 20px; gap: 12px; align-items: center;">
+                    <button type="button" class="btn-ws btn-danger-ws" onclick="deleteTask()" style="padding: 8px 16px; border-radius: 8px;">
+                        Delete Task
+                    </button>
+                    <div style="flex-grow: 1;"></div>
+                    <button type="button" class="btn-cancel" onclick="closeApp()">Discard</button>
+                    <button type="button" onclick="finishTask()" style="background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;">
+                        Finish Task
+                    </button>
+                    <button type="button" class="btn-submit" onclick="saveTaskUpdates()">Save Changes</button>
                 </div>
             </div>
         </div>
@@ -1774,6 +1826,13 @@
             <!-- Tabs added dynamically -->
         </div>
         <div class="bottom-solid-line"></div>
+    </div>
+
+    <!-- ── Sync Toast ────────────────────────────────── -->
+    <div class="sync-toast" id="syncToast">
+        <div class="sync-spinner" id="syncSpinner"></div>
+        <svg class="sync-icon" id="syncIcon" style="display:none" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        <span id="syncText">Syncing…</span>
     </div>
 
     <!-- ── Scripts ──────────────────────────────────── -->

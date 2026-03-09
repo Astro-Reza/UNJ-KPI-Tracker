@@ -147,6 +147,7 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
     SAVE CHANGES
     ════════════════════════════════════════════════ */
 document.getElementById('btnSave').addEventListener('click', async () => {
+    showToast('Syncing to database…', 'success');
     try {
         const res = await fetch('/api/students/save-all', {
             method: 'POST',
