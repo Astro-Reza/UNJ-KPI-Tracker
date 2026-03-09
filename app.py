@@ -139,6 +139,27 @@ def _nim_exists(nim_id):
     return any(s['nim_id'] == nim_id for s in students)
 
 
+import re
+
+def _parse_date(date_str):
+    """Convert Google Sheets/JS date strings to YYYY-MM-DD."""
+    if not date_str:
+        return ''
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+        return date_str
+    try:
+        # Try parsing "Thu Mar 05 2026 00:00:00 GMT+0700" to "Mar 05 2026"
+        parts = date_str.split(' ')
+        if len(parts) >= 4:
+            dt_str = f"{parts[1]} {parts[2]} {parts[3]}"
+            dt = datetime.datetime.strptime(dt_str, "%b %d %Y")
+            return dt.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    if 'T' in date_str:
+        return date_str.split('T')[0]
+    return date_str
+
 # ── Task Helpers ─────────────────────────────────────
 
 def _read_tasks():
@@ -154,6 +175,10 @@ def _read_tasks():
             row['status_id'] = int(row.get('status_id', 0))
         except (ValueError, TypeError):
             row['status_id'] = 0
+            
+        row['start_date'] = _parse_date(row.get('start_date', ''))
+        row['end_date'] = _parse_date(row.get('end_date', ''))
+        
         row['type_name'] = TASK_TYPES.get(row['type_id'], '')
         row['status_name'] = TASK_STATUSES.get(row['status_id'], '')
         tasks.append(row)
