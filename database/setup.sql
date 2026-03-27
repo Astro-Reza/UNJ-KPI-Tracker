@@ -67,6 +67,21 @@ ALTER TABLE public.task_contributors ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public profiles are viewable by all" ON public.student_database FOR
 SELECT USING (true);
 
+CREATE POLICY "Service role full access on students" ON public.student_database
+  FOR ALL TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Service role full access on tasks" ON public.task_data
+  FOR ALL TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Service role full access on contributors" ON public.task_contributors
+  FOR ALL TO service_role
+  USING (true)
+  WITH CHECK (true);
+
 CREATE POLICY "Users can update their own profile" ON public.student_database FOR
 UPDATE USING (auth.uid () = user_id);
 

@@ -121,7 +121,17 @@ def _append_student(name_id, email_id, department_id, nim_id):
             }
         })
     except Exception as e:
-        print(f"Auth user creation notice (might already exist): {e}")
+        message = str(e).lower()
+        duplicate_markers = (
+            'already registered',
+            'already exists',
+            'duplicate key',
+            'user already exists',
+        )
+        if any(marker in message for marker in duplicate_markers):
+            print(f"Auth user already exists for {email_id}: {e}")
+            return
+        raise RuntimeError(f"Failed to create auth user for {email_id}: {e}") from e
 
 
 def _nim_exists(nim_id):
@@ -636,9 +646,11 @@ def change_password():
     try:
         temp_client = create_client(url, key)
         auth_res = temp_client.auth.sign_in_with_password({"email": email, "password": old_password})
+        if not auth_res or not getattr(auth_res, 'session', None) or not auth_res.session.access_token:
+            return jsonify({'error': 'Failed to establish an authenticated session'}), 401
         temp_client.auth.update_user({'password': new_password})
     except Exception as e:
-        return jsonify({'error': 'Incorrect current password or update failed'}), 401
+        return jsonify({'error': f'Incorrect current password or update failed: {e}'}), 401
     
     return jsonify({'message': 'Password updated successfully!'}), 200
 
