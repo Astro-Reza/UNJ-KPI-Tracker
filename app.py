@@ -559,7 +559,10 @@ def register_student():
         return jsonify({'errors': errors}), 422
 
     department_id = int(department_id)
-    _append_student(name_id, email_id, department_id, nim_id)
+    try:
+        _append_student(name_id, email_id, department_id, nim_id)
+    except RuntimeError as e:
+        return jsonify({'error': str(e)}), 500
 
     return jsonify({
         'message': f'{name_id} registered successfully!',
