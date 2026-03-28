@@ -14,6 +14,9 @@ from flask import Flask, render_template, request, jsonify, Response, session, r
 from werkzeug.security import check_password_hash, generate_password_hash
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect, CSRFError
 
 load_dotenv()
 
@@ -22,6 +25,35 @@ secret_key = os.environ.get('SECRET_KEY')
 if not secret_key:
     raise RuntimeError('SECRET_KEY must be set in the environment')
 app.secret_key = secret_key
+
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+)
+
+limiter = Limiter(get_remote_address, app=app, storage_uri="memory://")
+csrf = CSRFProtect(app)
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(e):
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'CSRF token missing or invalid'}), 400
+    return redirect(url_for('login'))
+
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:;"
+    )
+    return response
 
 url: str = os.environ.get("SUPABASE_URL", "")
 key: str = os.environ.get("SUPABASE_KEY", "")
@@ -32,8 +64,10 @@ if url and key:
     supabase = create_client(url, key)
 
 # ── Authentication ───────────────────────────────────
-ADMIN_USERNAME = 'admin-cis'
-ADMIN_PASSWORD_HASH = 'scrypt:32768:8:1$mfjM50HyCVvDkVfl$025eee058823aff663e2fbee27051d162ea40fcb65019fd51adbb3ab93ec011ff6b174187ac2afb50a4b16736e7ba238fadf7551acd1ace2b987ff8d7b8aa851'
+ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME')
+ADMIN_PASSWORD_HASH = os.environ.get('ADMIN_PASSWORD_HASH')
+if not ADMIN_USERNAME or not ADMIN_PASSWORD_HASH:
+    raise RuntimeError("Admin credentials not set in environment.")
 
 
 def login_required(f):
@@ -116,7 +150,10 @@ def _write_students(students):
 
 def _append_student(name_id, email_id, department_id, nim_id):
     """Add a new student to Supabase."""
-    if not supabase: return
+    if not supabase: return None
+    
+    import secrets
+    random_password = secrets.token_urlsafe(10)
     
     try:
         # Create user in Supabase Auth
@@ -124,7 +161,7 @@ def _append_student(name_id, email_id, department_id, nim_id):
         # create the entry in student_database when this succeeds.
         supabase.auth.admin.create_user({
             "email": email_id,
-            "password": nim_id,
+            "password": random_password,
             "email_confirm": True,
             "user_metadata": {
                 "nim_id": nim_id, 
@@ -132,6 +169,7 @@ def _append_student(name_id, email_id, department_id, nim_id):
                 "department_id": department_id
             }
         })
+        return random_password
     except Exception as e:
         message = str(e).lower()
         print(f"[Supabase Error] _append_student failed. Type: {type(e).__name__}, Error: {e}")
@@ -143,7 +181,7 @@ def _append_student(name_id, email_id, department_id, nim_id):
         )
         if any(marker in message for marker in duplicate_markers):
             print(f"Auth user already exists for {email_id}: {e}")
-            return
+            return None
         raise RuntimeError(f"Failed to create auth user for {email_id}: {e}") from e
 
 
@@ -385,6 +423,7 @@ def _update_student_selection(nim_id, selected_task_ids):
 # ── Auth Routes ──────────────────────────────────────
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def login():
     """Show login form (GET) or process login (POST)."""
     if session.get('logged_in'):
@@ -612,12 +651,12 @@ def register_student():
 
     department_id = int(department_id)
     try:
-        _append_student(name_id, email_id, department_id, nim_id)
+        random_pwd = _append_student(name_id, email_id, department_id, nim_id)
     except RuntimeError as e:
         return jsonify({'error': str(e)}), 500
 
     return jsonify({
-        'message': f'{name_id} registered successfully!',
+        'message': f'{name_id} registered successfully! Temporary password: {random_pwd}',
         'student': {
             'name_id': name_id,
             'email_id': email_id,
@@ -645,6 +684,8 @@ def save_all_students():
     return jsonify({'message': f'Saved {len(data["students"])} students'}), 200
 
 @app.route('/api/student/auth', methods=['POST'])
+@csrf.exempt
+@limiter.limit("10 per minute")
 def student_auth():
     """Authenticate a returning student by NIM and password (default NIM). Return student and available tasks."""
     data = request.get_json()
@@ -686,6 +727,8 @@ def student_auth():
     }), 200
 
 @app.route('/api/student/change_password', methods=['POST'])
+@csrf.exempt
+@limiter.limit("5 per minute")
 def change_password():
     """Change a student's password."""
     data = request.get_json()
@@ -724,6 +767,7 @@ def change_password():
     return jsonify({'message': 'Password updated successfully!'}), 200
 
 @app.route('/api/student/tasks', methods=['POST'])
+@csrf.exempt
 def update_student_tasks():
     """Update a specific student's selected tasks without admin auth"""
     data = request.get_json()
@@ -1032,15 +1076,16 @@ def export_sql():
     students = _read_students()
     lines = ['-- Student Data INSERT statements\n']
     lines.append(f'-- Generated on {datetime.datetime.now().isoformat()}\n\n')
+    
+    def q(v):
+        return str(v).replace("\\", "\\\\").replace("'", "\\'").replace("\x00", "")
+        
     for s in students:
-        name = s['name_id'].replace("'", "''")
-        email = s.get('email_id', '').replace("'", "''")
-        nim = s['nim_id'].replace("'", "''")
-        job = s.get('job_id_list', '').replace("'", "''")
-        pwd = s.get('password', '').replace("'", "''")
         lines.append(
-            f"INSERT INTO student_database (name_id, email_id, department_id, nim_id, score, job_id_list, password) "
-            f"VALUES ('{name}', '{email}', {s['department_id']}, '{nim}', {s['score']}, '{job}', '{pwd}');\n"
+            f"INSERT INTO student_database (name_id, email_id, department_id, nim_id, score, job_id_list) "
+            f"VALUES ('{q(s.get('name_id', ''))}', '{q(s.get('email_id', ''))}', "
+            f"{int(s.get('department_id', 0))}, '{q(s.get('nim_id', ''))}', "
+            f"{float(s.get('score', 0))}, '{q(s.get('job_id_list', ''))}');\n"
         )
     sql_content = ''.join(lines)
     return Response(
@@ -1059,4 +1104,5 @@ def export_sheets():
 
 # ── Run ──────────────────────────────────────────────
 if __name__ == '__main__':
-    app.run(debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true', port=int(os.environ.get('PORT', 5000)))
+    debug_mode = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    app.run(debug=debug_mode, port=int(os.environ.get('PORT', 5000)))

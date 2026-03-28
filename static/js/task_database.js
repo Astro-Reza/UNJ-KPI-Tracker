@@ -1,3 +1,9 @@
+function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str == null ? '' : String(str);
+    return d.innerHTML;
+}
+
 const TASK_TYPES = { 1: 'Publication', 2: 'Event', 3: 'Camp' };
 const TASK_STATUSES = { 1: 'Planning', 2: 'In-Progress', 3: 'Execution', 4: 'Documentation', 5: 'Lecturer Review', 6: 'Done', 7: 'Finished' };
 
@@ -54,12 +60,12 @@ function renderTable(filter = '') {
 
         return `<tr>
             <td style="color:#94a3b8; font-weight:600;">${i + 1}</td>
-            <td style="font-weight:600;">${t.task_name || '—'}</td>
-            <td><span class="badge ${typeBadgeClass}">${typeName}</span></td>
-            <td>${statusName}</td>
-            <td>${t.start_date || '—'}</td>
-            <td>${t.end_date || '—'}</td>
-            <td>${t.pic || '—'}</td>
+            <td style="font-weight:600;">${esc(t.task_name || '—')}</td>
+            <td><span class="badge ${typeBadgeClass}">${esc(typeName)}</span></td>
+            <td>${esc(statusName)}</td>
+            <td>${esc(t.start_date || '—')}</td>
+            <td>${esc(t.end_date || '—')}</td>
+            <td>${esc(t.pic || '—')}</td>
         </tr>`;
     }).join('');
 

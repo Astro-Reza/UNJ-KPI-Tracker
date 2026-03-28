@@ -1,3 +1,10 @@
+// ── HTML Escaping ───────────────────────────────────
+function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str == null ? '' : String(str);
+    return d.innerHTML;
+}
+
 // ── Sync Toast ──────────────────────────────────────
 const syncToast = document.getElementById('syncToast');
 const syncSpinner = document.getElementById('syncSpinner');
@@ -69,24 +76,24 @@ function buildJobCardHTML(t) {
     const contribList = JSON.stringify(t.contributors_list || []);
     return `<div class="job-card"
                  style="cursor: pointer;"
-                 data-task-id="${t.task_id}"
-                 data-task-name="${t.task_name}"
+                 data-task-id="${esc(t.task_id)}"
+                 data-task-name="${esc(t.task_name)}"
                  data-type-id="${t.type_id}"
-                 data-start-date="${t.start_date || ''}"
-                 data-end-date="${t.end_date || ''}"
+                 data-start-date="${esc(t.start_date || '')}"
+                 data-end-date="${esc(t.end_date || '')}"
                  data-status-id="${t.status_id}"
                  data-contributor-count="${contribCount}"
-                 data-contributors='${contribList.replace(/'/g, '&#39;')}'
-                 data-pic="${t.pic || ''}"
-                 data-related-links="${t.related_links || ''}"
-                 data-description="${(t.description || '').replace(/"/g, '&quot;')}"
+                 data-contributors='${esc(contribList.replace(/'/g, '&#39;'))}'
+                 data-pic="${esc(t.pic || '')}"
+                 data-related-links="${esc(t.related_links || '')}"
+                 data-description="${esc(t.description || '')}"
                  onclick="openEditModal(this)">
-                <div class="job-title">${t.task_name}</div>
+                <div class="job-title">${esc(t.task_name)}</div>
                 <div class="card-divider"></div>
                 <div class="job-info">
-                    <div class="job-timeline">${t.start_date || ''} – ${t.end_date || ''}</div>
-                    <div class="job-type">${typeName}</div>
-                    <div class="job-contributors">${statusName} · ${contribCount} Contributors</div>
+                    <div class="job-timeline">${esc(t.start_date || '')} – ${esc(t.end_date || '')}</div>
+                    <div class="job-type">${esc(typeName)}</div>
+                    <div class="job-contributors">${esc(statusName)} · ${contribCount} Contributors</div>
                 </div>
             </div>`;
 }
@@ -199,12 +206,12 @@ function openEditModal(cardElement) {
             document.getElementById('tm-assigned-count').textContent = contribs.length;
             if (contribs.length > 0) {
                 tbody.innerHTML = contribs.map(c => `
-                    <tr data-nim="${c.nim_id}">
+                    <tr data-nim="${esc(c.nim_id)}">
                         <td><input type="checkbox" class="student-cb"></td>
-                        <td>${c.name}</td>
-                        <td>${c.nim_id}</td>
-                        <td>${c.department}</td>
-                        <td><input type="number" class="cell-editable" value="${c.points}"></td>
+                        <td>${esc(c.name)}</td>
+                        <td>${esc(c.nim_id)}</td>
+                        <td>${esc(c.department)}</td>
+                        <td><input type="number" class="cell-editable" value="${esc(c.points)}"></td>
                     </tr>
                 `).join('');
             } else {
@@ -219,7 +226,7 @@ function openEditModal(cardElement) {
                     tbody.innerHTML = contributorsList.map(name => `
                         <tr>
                             <td><input type="checkbox" class="student-cb"></td>
-                            <td>${name}</td>
+                            <td>${esc(name)}</td>
                             <td>—</td>
                             <td>—</td>
                             <td><input type="number" class="cell-editable" value="0"></td>
@@ -504,18 +511,18 @@ async function refreshDashboard() {
             if (data.ongoing_projects.length > 0) {
                 projectsContainer.innerHTML = projectsHeader + data.ongoing_projects.map(t => `
                     <div class="project-item">
-                        <div class="project-title">${t.task_name}</div>
+                        <div class="project-title">${esc(t.task_name)}</div>
                         <div class="progress-track">
                             <div class="progress-fill" style="width: ${t.status_id * 25}%;"></div>
                         </div>
                         <div class="project-dates">
                             <div class="date-block">
                                 <span class="date-label">Project Start</span>
-                                <span class="date-value">${t.start_date}</span>
+                                <span class="date-value">${esc(t.start_date)}</span>
                             </div>
                             <div class="date-block right">
                                 <span class="date-label">Project Ends</span>
-                                <span class="date-value">${t.end_date}</span>
+                                <span class="date-value">${esc(t.end_date)}</span>
                             </div>
                         </div>
                     </div>
@@ -559,8 +566,8 @@ function renderTaskWidget(widget, label, tasks, emptyTitle) {
         if (tasks && tasks.length > 0) {
             taskList.innerHTML = tasks.map(t => `
                 <div class="task-item">
-                    <div class="task-title">${t.task_name}</div>
-                    <div class="task-date">${t.start_date} – ${t.end_date}</div>
+                    <div class="task-title">${esc(t.task_name)}</div>
+                    <div class="task-date">${esc(t.start_date)} – ${esc(t.end_date)}</div>
                 </div>
             `).join('');
         } else {

@@ -1,3 +1,9 @@
+function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str == null ? '' : String(str);
+    return d.innerHTML;
+}
+
 const DEPARTMENTS = { 1: 'Head of International Office', 2: 'Secretary', 3: 'Administration', 4: 'Media & Design', 5: 'Hospitality', 6: 'Community Impact' };
 let sortCol = 'name_id';
 let sortAsc = true;
@@ -34,11 +40,11 @@ function renderTable(filter = '') {
         const selClass = selectedNIMs.has(s.nim_id) ? 'selected' : '';
         const deptName = DEPARTMENTS[s.department_id] || '';
         const tasks = (s.job_id_list || '').split(';').filter(Boolean).length;
-        return `<tr class="${selClass}" data-nim="${s.nim_id}">
-            <td><input type="checkbox" class="row-check" data-nim="${s.nim_id}" ${checked}></td>
+        return `<tr class="${selClass}" data-nim="${esc(s.nim_id)}">
+            <td><input type="checkbox" class="row-check" data-nim="${esc(s.nim_id)}" ${checked}></td>
             <td style="color:#94a3b8; font-weight:600;">${i + 1}</td>
-            <td><div class="cell-editable" contenteditable="true" data-field="name_id">${s.name_id}</div></td>
-            <td><div class="cell-editable" contenteditable="true" data-field="email_id">${s.email_id}</div></td>
+            <td><div class="cell-editable" contenteditable="true" data-field="name_id">${esc(s.name_id)}</div></td>
+            <td><div class="cell-editable" contenteditable="true" data-field="email_id">${esc(s.email_id)}</div></td>
             <td>
                 <select class="cell-dept-select" data-field="department_id">
                     ${Object.entries(DEPARTMENTS).map(([k, v]) =>
@@ -46,9 +52,9 @@ function renderTable(filter = '') {
         ).join('')}
                 </select>
             </td>
-            <td style="font-weight:600;">${s.nim_id}</td>
+            <td style="font-weight:600;">${esc(s.nim_id)}</td>
             <td><div class="cell-editable" contenteditable="true" data-field="score">${parseInt(s.score)}</div></td>
-            <td style="font-size:12px; color:#64748b; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${s.job_id_list || ''}">${tasks ? tasks + ' task(s)' : '—'}</td>
+            <td style="font-size:12px; color:#64748b; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(s.job_id_list || '')}">${tasks ? tasks + ' task(s)' : '—'}</td>
         </tr>`;
     }).join('');
 
