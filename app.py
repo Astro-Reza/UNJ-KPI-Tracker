@@ -276,9 +276,19 @@ def _generate_task_id(type_id):
     today = datetime.date.today().strftime('%Y%m%d')
     tasks = _read_tasks()
     prefix = f"{today}-{type_id}-"
-    existing = [t['task_id'] for t in tasks if t['task_id'].startswith(prefix)]
-    seq = len(existing) + 1
-    return f"{prefix}{seq:03d}"
+    
+    max_seq = 0
+    for t in tasks:
+        tid = t.get('task_id', '')
+        if tid.startswith(prefix):
+            try:
+                seq_num = int(tid.split('-')[-1])
+                if seq_num > max_seq:
+                    max_seq = seq_num
+            except (ValueError, IndexError):
+                pass
+                
+    return f"{prefix}{max_seq + 1:03d}"
 
 
 def _append_task(task_id, task_name, type_id, start_date, end_date, status_id, pic, related_links, description):
@@ -381,6 +391,55 @@ def _write_task_contributors(task_id, rows):
         print(f"[Supabase Error] _write_task_contributors failed. Type: {type(e).__name__}, Error: {e}")
         raise
 
+def _sync_student_stats():
+    """Recalculate both 'score' and 'job_id_list' for all students dynamically from task_contributors and task_data."""
+    if not supabase: return
+    try:
+        # 1. Fetch all tasks
+        res_tasks = supabase.table('task_data').select('task_id, status_id').execute()
+        finished_task_ids = {t['task_id'] for t in res_tasks.data if t.get('status_id') == 7}
+        
+        # 2. Fetch all contributors
+        res_contribs = supabase.table('task_contributors').select('task_id, nim_id, points').execute()
+        all_contribs = res_contribs.data
+        
+        # 3. Aggregate per student
+        student_stats = {}
+        for c in all_contribs:
+            nim = c.get('nim_id')
+            tid = c.get('task_id')
+            pts = float(c.get('points', 0.0))
+            
+            if not nim: continue
+            
+            if nim not in student_stats:
+                student_stats[nim] = {'score': 0.0, 'job_list': []}
+                
+            student_stats[nim]['job_list'].append(tid)
+            if tid in finished_task_ids:
+                student_stats[nim]['score'] += pts
+                
+        # 4. Fetch all students to update
+        res_students = supabase.table('student_database').select('nim_id, score, job_id_list').execute()
+        
+        for s in res_students.data:
+            nim = s['nim_id']
+            curr_score = float(s.get('score', 0.0) or 0.0)
+            curr_jobs = s.get('job_id_list', '') or ''
+            
+            stats = student_stats.get(nim, {'score': 0.0, 'job_list': []})
+            new_score = float(stats['score'])
+            new_jobs = ';'.join(filter(None, stats['job_list']))
+            
+            # Only update if something changed to save API calls
+            if abs(new_score - curr_score) > 0.01 or new_jobs != curr_jobs:
+                supabase.table('student_database').update({
+                    'score': new_score,
+                    'job_id_list': new_jobs
+                }).eq('nim_id', nim).execute()
+                
+    except Exception as e:
+        print(f"[Supabase Error] _sync_student_stats failed: {e}")
 
 def _update_student_selection(nim_id, selected_task_ids):
     """Update the student's task list in both student_data and task_contributors."""
@@ -413,6 +472,8 @@ def _update_student_selection(nim_id, selected_task_ids):
             # Add student to newly selected tasks
             new_contribs = [{'task_id': tid, 'nim_id': nim_id, 'points': 0.0} for tid in added_tasks]
             supabase.table('task_contributors').insert(new_contribs).execute()
+
+        _sync_student_stats()
 
         return True
     except Exception as e:
@@ -914,6 +975,10 @@ def update_task(task_id):
             'related_links': related_links,
             'description': description
         }).eq('task_id', task_id).execute()
+        
+        # Sync scores if status changed
+        _sync_student_stats()
+        
     except Exception as exc:
         print(f"[Supabase Error] update_task failed. Type: {type(exc).__name__}, Error: {exc}")
         return jsonify({'error': f'Failed to update task in Supabase: {exc}'}), 500
@@ -939,64 +1004,29 @@ def update_task(task_id):
 @app.route('/api/tasks/<task_id>', methods=['DELETE'])
 @login_required
 def delete_task(task_id):
-    """Delete a task and remove all its contributor points from students."""
+    """Delete a task and sync student stats."""
     if not supabase: return jsonify({'error': 'DB not initialized'}), 500
-    
-    # 1. Check if task exists
+
+    # Check if task exists
     try:
         task_res = supabase.table('task_data').select('*').eq('task_id', task_id).execute()
         if not task_res.data:
             return jsonify({'error': 'Task not found'}), 404
-
-        # 2. Get task contributors to update student scores
-        contributors_res = supabase.table('task_contributors').select('nim_id, points').eq('task_id', task_id).execute()
-        task_contribs = contributors_res.data
     except Exception as e:
-        print(f"[Supabase Error] Task lookup/contributors lookup failed in delete. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Supabase Error] Task lookup in delete failed. Type: {type(e).__name__}, Error: {e}")
         return jsonify({'error': 'Database error'}), 500
-    
-    # 3. Update student records (score and job_id_list)
-    if task_contribs:
-        students = _read_students()
-        updates = []
-        for tc in task_contribs:
-            nim_id = tc['nim_id']
-            points = tc.get('points', 0.0)
-            
-            student = next((s for s in students if s['nim_id'] == nim_id), None)
-            if student:
-                try:
-                    student['score'] -= float(points)
-                except ValueError:
-                    student['score'] = 0.0
-                
-                # Remove task_id from job_id_list
-                job_list = student.get('job_id_list', '').split(';')
-                if task_id in job_list:
-                    job_list.remove(task_id)
-                student['job_id_list'] = ';'.join(filter(None, job_list))
-                updates.append({
-                    'nim_id': student['nim_id'],
-                    'score': student['score'],
-                    'job_id_list': student['job_id_list']
-                })
-        
-        for u in updates:
-            try:
-                supabase.table('student_database').update({'score': u['score'], 'job_id_list': u['job_id_list']}).eq('nim_id', u['nim_id']).execute()
-            except Exception as e:
-                print(f"[Supabase Error] student_database update in delete_task failed. Type: {type(e).__name__}, Error: {e}")
 
-    # 4. Delete the task (task_contributors will cascade delete if database is configured to CASCADE, but we explicitly delete here for safety in case CASCADE isn't set up yet)
+    # Delete the task
     try:
         supabase.table('task_contributors').delete().eq('task_id', task_id).execute()
         supabase.table('task_data').delete().eq('task_id', task_id).execute()
+        
+        # Sync scores and job lists
+        _sync_student_stats()
+        
     except Exception as e:
         print(f"[Supabase Error] Task deletion failed. Type: {type(e).__name__}, Error: {e}")
         return jsonify({'error': 'Database error during deletion'}), 500
-        
-    return jsonify({'message': 'Task deleted successfully'}), 200
-
 
 @app.route('/api/tasks/<task_id>/contributors', methods=['GET'])
 @login_required
@@ -1035,6 +1065,7 @@ def update_task_contributors(task_id):
 
     try:
         _write_task_contributors(task_id, rows)
+        _sync_student_stats()
     except Exception as exc:
         print(f"[Supabase Error] _write_task_contributors in update_task_contributors failed. Type: {type(exc).__name__}, Error: {exc}")
         return jsonify({'error': str(exc)}), 500
