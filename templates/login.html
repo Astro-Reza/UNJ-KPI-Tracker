@@ -295,6 +295,7 @@
         {% endif %}
 
         <form method="POST" action="{{ url_for('login') }}" id="loginForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="form-group">
                 <label class="form-label" for="username">Username</label>
                 <input type="text" class="form-input" id="username" name="username" placeholder="Enter your username"
