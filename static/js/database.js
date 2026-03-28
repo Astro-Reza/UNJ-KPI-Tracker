@@ -4,6 +4,12 @@ function esc(str) {
     return d.innerHTML;
 }
 
+const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
+function apiFetch(url, options = {}) {
+    const headers = { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN, ...(options.headers || {}) };
+    return fetch(url, { ...options, headers });
+}
+
 const DEPARTMENTS = { 1: 'Head of International Office', 2: 'Secretary', 3: 'Administration', 4: 'Media & Design', 5: 'Hospitality', 6: 'Community Impact' };
 let sortCol = 'name_id';
 let sortAsc = true;
@@ -155,7 +161,7 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
 document.getElementById('btnSave').addEventListener('click', async () => {
     showToast('Syncing to database…', 'success');
     try {
-        const res = await fetch('/api/students/save-all', {
+        const res = await apiFetch('/api/students/save-all', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ students })
@@ -198,7 +204,7 @@ document.getElementById('addStudentForm').addEventListener('submit', async (e) =
     };
 
     try {
-        const res = await fetch('/api/register', {
+        const res = await apiFetch('/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -237,7 +243,7 @@ document.getElementById('btnExportSheets').addEventListener('click', async () =>
     btn.style.opacity = '0.7';
 
     try {
-        const res = await fetch('/api/export/sheets', { method: 'POST' });
+        const res = await apiFetch('/api/export/sheets', { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
             showToast(data.message || 'Exported to Sheets!', 'success');

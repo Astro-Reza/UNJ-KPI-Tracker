@@ -4,6 +4,12 @@ function esc(str) {
     return d.innerHTML;
 }
 
+const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
+function apiFetch(url, options = {}) {
+    const headers = { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN, ...(options.headers || {}) };
+    return fetch(url, { ...options, headers });
+}
+
 const TASK_TYPES = { 1: 'Publication', 2: 'Event', 3: 'Camp' };
 const TASK_STATUSES = { 1: 'Planning', 2: 'In-Progress', 3: 'Execution', 4: 'Documentation', 5: 'Lecturer Review', 6: 'Done', 7: 'Finished' };
 
@@ -114,7 +120,7 @@ document.getElementById('btnExportSheets')?.addEventListener('click', async () =
     btn.style.opacity = '0.7';
 
     try {
-        const res = await fetch('/api/export/sheets', { method: 'POST' });
+        const res = await apiFetch('/api/export/sheets', { method: 'POST' });
         const data = await res.json();
         if (res.ok) {
             showToast(data.message || 'Exported to Sheets!', 'success');

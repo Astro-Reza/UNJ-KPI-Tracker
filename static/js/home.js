@@ -5,6 +5,20 @@ function esc(str) {
     return d.innerHTML;
 }
 
+// ── CSRF token for all admin fetch calls ─────────────
+const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+function apiFetch(url, options = {}) {
+    return fetch(url, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': CSRF_TOKEN,
+            ...(options.headers || {}),
+        },
+    });
+}
+
 // ── Sync Toast ──────────────────────────────────────
 const syncToast = document.getElementById('syncToast');
 const syncSpinner = document.getElementById('syncSpinner');
@@ -122,7 +136,7 @@ form.addEventListener('submit', async (e) => {
     showSyncToast('syncing');
 
     try {
-        const res = await fetch('/api/tasks', {
+        const res = await apiFetch('/api/tasks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -200,7 +214,7 @@ function openEditModal(cardElement) {
     document.getElementById('tm-assigned-count').textContent = '...';
     tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; opacity: 0.5;">Loading...</td></tr>`;
     
-    fetch(`/api/tasks/${ds.taskId}/contributors`)
+    apiFetch(`/api/tasks/${ds.taskId}/contributors`)
         .then(res => res.json())
         .then(contribs => {
             document.getElementById('tm-assigned-count').textContent = contribs.length;
@@ -351,7 +365,7 @@ async function deleteTask() {
     if (card) card.remove();
 
     try {
-        const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+        const res = await apiFetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
         if (res.ok) {
             showSyncToast('success', 'Deleted ✓');
             refreshDashboard();
@@ -433,7 +447,7 @@ async function saveTaskUpdates() {
 
     try {
         // 1. Save main task fields
-        const res = await fetch(`/api/tasks/${taskId}`, {
+        const res = await apiFetch(`/api/tasks/${taskId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -448,7 +462,7 @@ async function saveTaskUpdates() {
         
         // 2. Save contributor points (fire and forget-ish)
         if (contribPayload.length > 0) {
-            await fetch(`/api/tasks/${taskId}/contributors`, {
+            await apiFetch(`/api/tasks/${taskId}/contributors`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(contribPayload)
@@ -466,7 +480,7 @@ async function saveTaskUpdates() {
 // ── AJAX Dashboard Partial Refresh ──────────────────
 async function refreshDashboard() {
     try {
-        const res = await fetch('/api/dashboard');
+        const res = await apiFetch('/api/dashboard');
         if (!res.ok) return;
         const data = await res.json();
         
