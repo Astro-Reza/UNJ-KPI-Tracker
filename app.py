@@ -18,7 +18,10 @@ from supabase import create_client, Client
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'default-static-secret-key-for-dev-only')
+secret_key = os.environ.get('SECRET_KEY')
+if not secret_key:
+    raise RuntimeError('SECRET_KEY must be set in the environment')
+app.secret_key = secret_key
 
 url: str = os.environ.get("SUPABASE_URL", "")
 key: str = os.environ.get("SUPABASE_KEY", "")
@@ -67,7 +70,12 @@ TASK_STATUSES = {1: 'Planning', 2: 'In-Progress', 3: 'Execution', 4: 'Documentat
 def _read_students():
     """Return list of student dicts from Supabase."""
     if not supabase: return []
-    result = supabase.table('student_database').select('*').execute()
+    try:
+        result = supabase.table('student_database').select('*').execute()
+    except Exception as e:
+        print(f"[Supabase Error] _read_students failed. Type: {type(e).__name__}, Error: {e}")
+        return []
+    
     students = []
     for row in result.data:
         try:
@@ -99,7 +107,11 @@ def _write_students(students):
             'job_id_list': s.get('job_id_list', '')
         })
     # Warning: Supabase upsert requires the primary key (nim_id) to match
-    supabase.table('student_database').upsert(rows).execute()
+    try:
+        supabase.table('student_database').upsert(rows).execute()
+    except Exception as e:
+        print(f"[Supabase Error] _write_students failed. Type: {type(e).__name__}, Error: {e}")
+        raise
 
 
 def _append_student(name_id, email_id, department_id, nim_id):
@@ -122,6 +134,7 @@ def _append_student(name_id, email_id, department_id, nim_id):
         })
     except Exception as e:
         message = str(e).lower()
+        print(f"[Supabase Error] _append_student failed. Type: {type(e).__name__}, Error: {e}")
         duplicate_markers = (
             'already registered',
             'already exists',
@@ -137,8 +150,12 @@ def _append_student(name_id, email_id, department_id, nim_id):
 def _nim_exists(nim_id):
     """Check if a NIM already exists."""
     if not supabase: return False
-    result = supabase.table('student_database').select('nim_id').eq('nim_id', nim_id).execute()
-    return len(result.data) > 0
+    try:
+        result = supabase.table('student_database').select('nim_id').eq('nim_id', nim_id).execute()
+        return len(result.data) > 0
+    except Exception as e:
+        print(f"[Supabase Error] _nim_exists failed. Type: {type(e).__name__}, Error: {e}")
+        return False
 
 
 import re
@@ -167,7 +184,12 @@ def _parse_date(date_str):
 def _read_tasks():
     """Return list of task dicts from Supabase."""
     if not supabase: return []
-    result = supabase.table('task_data').select('*').execute()
+    try:
+        result = supabase.table('task_data').select('*').execute()
+    except Exception as e:
+        print(f"[Supabase Error] _read_tasks failed. Type: {type(e).__name__}, Error: {e}")
+        return []
+        
     tasks = []
     for row in result.data:
         try:
@@ -204,7 +226,11 @@ def _write_tasks(tasks):
             'related_links': str(t.get('related_links', '')),
             'description': str(t.get('description', '')),
         })
-    supabase.table('task_data').upsert(rows).execute()
+    try:
+        supabase.table('task_data').upsert(rows).execute()
+    except Exception as e:
+        print(f"[Supabase Error] _write_tasks failed. Type: {type(e).__name__}, Error: {e}")
+        raise
 
 
 def _generate_task_id(type_id):
@@ -222,17 +248,21 @@ def _append_task(task_id, task_name, type_id, start_date, end_date, status_id, p
     if not supabase:
         raise RuntimeError('Supabase client is not initialized')
 
-    return supabase.table('task_data').insert({
-        'task_id': task_id,
-        'task_name': task_name,
-        'type_id': int(type_id),
-        'start_date': _parse_date(start_date),
-        'end_date': _parse_date(end_date),
-        'status_id': int(status_id),
-        'pic': pic,
-        'related_links': related_links,
-        'description': description
-    }).execute()
+    try:
+        return supabase.table('task_data').insert({
+            'task_id': task_id,
+            'task_name': task_name,
+            'type_id': int(type_id),
+            'start_date': _parse_date(start_date),
+            'end_date': _parse_date(end_date),
+            'status_id': int(status_id),
+            'pic': pic,
+            'related_links': related_links,
+            'description': description
+        }).execute()
+    except Exception as e:
+        print(f"[Supabase Error] _append_task failed. Type: {type(e).__name__}, Error: {e}")
+        raise
 
 
 def _update_tasks(tasks):
@@ -245,7 +275,12 @@ def _update_tasks(tasks):
 def _read_all_contributors():
     """Return all contributor rows from Supabase."""
     if not supabase: return []
-    result = supabase.table('task_contributors').select('*').execute()
+    try:
+        result = supabase.table('task_contributors').select('*').execute()
+    except Exception as e:
+        print(f"[Supabase Error] _read_all_contributors failed. Type: {type(e).__name__}, Error: {e}")
+        return []
+        
     rows = []
     for row in result.data:
         try:
@@ -261,74 +296,90 @@ def _write_all_contributors(rows):
     if not supabase: return
     # This is inefficient in Postgres, but mimics the original list-overwrite approach
     # We first delete all then reinsert.
-    supabase.table('task_contributors').delete().neq('id', -1).execute()
-    data = []
-    for r in rows:
-        data.append({
-            'task_id': str(r.get('task_id', '')),
-            'nim_id': str(r.get('nim_id', '')),
-            'points': float(r.get('points', 0))
-        })
-    if data:
-        supabase.table('task_contributors').insert(data).execute()
+    try:
+        supabase.table('task_contributors').delete().neq('id', -1).execute()
+        data = []
+        for r in rows:
+            data.append({
+                'task_id': str(r.get('task_id', '')),
+                'nim_id': str(r.get('nim_id', '')),
+                'points': float(r.get('points', 0))
+            })
+        if data:
+            supabase.table('task_contributors').insert(data).execute()
+    except Exception as e:
+        print(f"[Supabase Error] _write_all_contributors failed. Type: {type(e).__name__}, Error: {e}")
+        raise
 
 
 def _read_task_contributors(task_id):
     """Return list of contributor dicts for a given task from Supabase."""
     if not supabase: return []
-    result = supabase.table('task_contributors').select('*').eq('task_id', task_id).execute()
-    return result.data
+    try:
+        result = supabase.table('task_contributors').select('*').eq('task_id', task_id).execute()
+        return result.data
+    except Exception as e:
+        print(f"[Supabase Error] _read_task_contributors failed. Type: {type(e).__name__}, Error: {e}")
+        return []
 
 
 def _write_task_contributors(task_id, rows):
     """Rewrite contributors for a specific task."""
     if not supabase: return
-    # 1. Delete existing for this task
-    supabase.table('task_contributors').delete().eq('task_id', task_id).execute()
-    # 2. Insert new rows
-    data = []
-    for r in rows:
-        data.append({
-            'task_id': task_id,
-            'nim_id': r['nim_id'],
-            'points': float(r.get('points', 0))
-        })
-    if data:
-        supabase.table('task_contributors').insert(data).execute()
+    try:
+        # 1. Delete existing for this task
+        supabase.table('task_contributors').delete().eq('task_id', task_id).execute()
+        # 2. Insert new rows
+        data = []
+        for r in rows:
+            data.append({
+                'task_id': task_id,
+                'nim_id': r['nim_id'],
+                'points': float(r.get('points', 0))
+            })
+        if data:
+            supabase.table('task_contributors').insert(data).execute()
+    except Exception as e:
+        print(f"[Supabase Error] _write_task_contributors failed. Type: {type(e).__name__}, Error: {e}")
+        raise
 
 
 def _update_student_selection(nim_id, selected_task_ids):
     """Update the student's task list in both student_data and task_contributors."""
     if not supabase: return False
     
-    # Fetch student
-    res_student = supabase.table('student_database').select('*').eq('nim_id', nim_id).execute()
-    if not res_student.data:
-        return False
-    student = res_student.data[0]
+    try:
+        # Fetch student
+        res_student = supabase.table('student_database').select('*').eq('nim_id', nim_id).execute()
+        if not res_student.data:
+            return False
+        student = res_student.data[0]
 
-    old_task_ids = set(student.get('job_id_list', '').split(';')) if student.get('job_id_list') else set()
-    old_task_ids = {t for t in old_task_ids if t.strip()}
-    new_task_ids = set(selected_task_ids)
+        old_task_ids = set(student.get('job_id_list', '').split(';')) if student.get('job_id_list') else set()
+        old_task_ids = {t for t in old_task_ids if t.strip()}
+        new_task_ids = set(selected_task_ids)
 
-    student['job_id_list'] = ';'.join(new_task_ids)
-    
-    # Update student record
-    supabase.table('student_database').update({'job_id_list': student['job_id_list']}).eq('nim_id', nim_id).execute()
-
-    added_tasks = new_task_ids - old_task_ids
-    removed_tasks = old_task_ids - new_task_ids
-
-    if removed_tasks:
-        # Remove student from unselected tasks
-        supabase.table('task_contributors').delete().eq('nim_id', nim_id).in_('task_id', list(removed_tasks)).execute()
+        student['job_id_list'] = ';'.join(new_task_ids)
         
-    if added_tasks:
-        # Add student to newly selected tasks
-        new_contribs = [{'task_id': tid, 'nim_id': nim_id, 'points': 0.0} for tid in added_tasks]
-        supabase.table('task_contributors').insert(new_contribs).execute()
+        # Update student record
+        supabase.table('student_database').update({'job_id_list': student['job_id_list']}).eq('nim_id', nim_id).execute()
 
-    return True
+        added_tasks = new_task_ids - old_task_ids
+        removed_tasks = old_task_ids - new_task_ids
+
+        if removed_tasks:
+            # Remove student from unselected tasks
+            supabase.table('task_contributors').delete().eq('nim_id', nim_id).in_('task_id', list(removed_tasks)).execute()
+            
+        if added_tasks:
+            # Add student to newly selected tasks
+            new_contribs = [{'task_id': tid, 'nim_id': nim_id, 'points': 0.0} for tid in added_tasks]
+            supabase.table('task_contributors').insert(new_contribs).execute()
+
+        return True
+    except Exception as e:
+        print(f"[Supabase Error] _update_student_selection failed. Type: {type(e).__name__}, Error: {e}")
+        raise
 
 
 # ── Auth Routes ──────────────────────────────────────
@@ -531,6 +582,7 @@ def get_students():
 
 
 @app.route('/api/register', methods=['POST'])
+@login_required
 def register_student():
     """Register a new student. Expects JSON body."""
     data = request.get_json()
@@ -585,7 +637,11 @@ def save_all_students():
     data = request.get_json()
     if not data or 'students' not in data:
         return jsonify({'error': 'Invalid request body'}), 400
-    _write_students(data['students'])
+    try:
+        _write_students(data['students'])
+    except Exception as exc:
+        print(f"[Supabase Error] _write_students in save_all_students failed. Type: {type(exc).__name__}, Error: {exc}")
+        return jsonify({'error': str(exc)}), 500
     return jsonify({'message': f'Saved {len(data["students"])} students'}), 200
 
 @app.route('/api/student/auth', methods=['POST'])
@@ -602,7 +658,12 @@ def student_auth():
         return jsonify({'error': 'NIM and password are required'}), 400
         
     if not supabase: return jsonify({'error': 'DB not initialized'}), 500
-    res = supabase.table('student_database').select('*').eq('nim_id', nim_id).execute()
+    try:
+        res = supabase.table('student_database').select('*').eq('nim_id', nim_id).execute()
+    except Exception as e:
+        print(f"[Supabase Error] student_auth failed. Type: {type(e).__name__}, Error: {e}")
+        return jsonify({'error': 'Database error'}), 500
+        
     if not res.data:
         return jsonify({'error': 'Student not found'}), 404
     student = res.data[0]
@@ -639,7 +700,12 @@ def change_password():
         return jsonify({'error': 'All fields are required'}), 400
         
     if not supabase: return jsonify({'error': 'DB not initialized'}), 500
-    res = supabase.table('student_database').select('*').eq('nim_id', nim_id).execute()
+    try:
+        res = supabase.table('student_database').select('*').eq('nim_id', nim_id).execute()
+    except Exception as e:
+        print(f"[Supabase Error] change_password lookup failed. Type: {type(e).__name__}, Error: {e}")
+        return jsonify({'error': 'Database error'}), 500
+        
     if not res.data:
         return jsonify({'error': 'Student not found'}), 404
         
@@ -669,8 +735,11 @@ def update_student_tasks():
     
     if not nim_id:
         return jsonify({'error': 'NIM is required'}), 400
-        
-    success = _update_student_selection(nim_id, task_ids)
+    try:
+        success = _update_student_selection(nim_id, task_ids)
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 500
+
     if not success:
         return jsonify({'error': 'Student not found'}), 404
         
@@ -723,8 +792,9 @@ def create_task():
     task_id = _generate_task_id(type_id)
 
     try:
-        _append_task(task_id, task_name, type_id, start_date, end_date, status_id, pic, related_links, description).execute()
+        _append_task(task_id, task_name, type_id, start_date, end_date, status_id, pic, related_links, description)
     except Exception as exc:
+        print(f"[Supabase Error] _append_task in create_task failed. Type: {type(exc).__name__}, Error: {exc}")
         return jsonify({'error': f'Failed to save task to Supabase: {exc}'}), 500
 
     return jsonify({
@@ -801,6 +871,7 @@ def update_task(task_id):
             'description': description
         }).eq('task_id', task_id).execute()
     except Exception as exc:
+        print(f"[Supabase Error] update_task failed. Type: {type(exc).__name__}, Error: {exc}")
         return jsonify({'error': f'Failed to update task in Supabase: {exc}'}), 500
 
     return jsonify({
@@ -828,13 +899,17 @@ def delete_task(task_id):
     if not supabase: return jsonify({'error': 'DB not initialized'}), 500
     
     # 1. Check if task exists
-    task_res = supabase.table('task_data').select('*').eq('task_id', task_id).execute()
-    if not task_res.data:
-        return jsonify({'error': 'Task not found'}), 404
+    try:
+        task_res = supabase.table('task_data').select('*').eq('task_id', task_id).execute()
+        if not task_res.data:
+            return jsonify({'error': 'Task not found'}), 404
 
-    # 2. Get task contributors to update student scores
-    contributors_res = supabase.table('task_contributors').select('nim_id, points').eq('task_id', task_id).execute()
-    task_contribs = contributors_res.data
+        # 2. Get task contributors to update student scores
+        contributors_res = supabase.table('task_contributors').select('nim_id, points').eq('task_id', task_id).execute()
+        task_contribs = contributors_res.data
+    except Exception as e:
+        print(f"[Supabase Error] Task lookup/contributors lookup failed in delete. Type: {type(e).__name__}, Error: {e}")
+        return jsonify({'error': 'Database error'}), 500
     
     # 3. Update student records (score and job_id_list)
     if task_contribs:
@@ -863,11 +938,18 @@ def delete_task(task_id):
                 })
         
         for u in updates:
-            supabase.table('student_database').update({'score': u['score'], 'job_id_list': u['job_id_list']}).eq('nim_id', u['nim_id']).execute()
+            try:
+                supabase.table('student_database').update({'score': u['score'], 'job_id_list': u['job_id_list']}).eq('nim_id', u['nim_id']).execute()
+            except Exception as e:
+                print(f"[Supabase Error] student_database update in delete_task failed. Type: {type(e).__name__}, Error: {e}")
 
     # 4. Delete the task (task_contributors will cascade delete if database is configured to CASCADE, but we explicitly delete here for safety in case CASCADE isn't set up yet)
-    supabase.table('task_contributors').delete().eq('task_id', task_id).execute()
-    supabase.table('task_data').delete().eq('task_id', task_id).execute()
+    try:
+        supabase.table('task_contributors').delete().eq('task_id', task_id).execute()
+        supabase.table('task_data').delete().eq('task_id', task_id).execute()
+    except Exception as e:
+        print(f"[Supabase Error] Task deletion failed. Type: {type(e).__name__}, Error: {e}")
+        return jsonify({'error': 'Database error during deletion'}), 500
         
     return jsonify({'message': 'Task deleted successfully'}), 200
 
@@ -907,7 +989,11 @@ def update_task_contributors(task_id):
         if nim:
             rows.append({'nim_id': nim, 'points': pts})
 
-    _write_task_contributors(task_id, rows)
+    try:
+        _write_task_contributors(task_id, rows)
+    except Exception as exc:
+        print(f"[Supabase Error] _write_task_contributors in update_task_contributors failed. Type: {type(exc).__name__}, Error: {exc}")
+        return jsonify({'error': str(exc)}), 500
     return jsonify({'message': f'Saved {len(rows)} contributors for task {task_id}'}), 200
 
 
@@ -973,4 +1059,4 @@ def export_sheets():
 
 # ── Run ──────────────────────────────────────────────
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true', port=int(os.environ.get('PORT', 5000)))
