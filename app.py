@@ -1027,6 +1027,8 @@ def delete_task(task_id):
     except Exception as e:
         print(f"[Supabase Error] Task deletion failed. Type: {type(e).__name__}, Error: {e}")
         return jsonify({'error': 'Database error during deletion'}), 500
+    
+    return jsonify({'message': 'Task deleted successfully!'}), 200
 
 @app.route('/api/tasks/<task_id>/contributors', methods=['GET'])
 @login_required
@@ -1131,6 +1133,132 @@ def export_sql():
 def export_sheets():
     """Data is already in Google Sheets — this is now a no-op confirmation."""
     return jsonify({'message': 'Data is already synced with Google Sheets!'}), 200
+
+
+# ── Enhanced Student Management APIs ─────────────────
+
+@app.route('/api/students/<nim_id>', methods=['GET'])
+@login_required
+def get_student(nim_id):
+    """Return a single student with their task contributions."""
+    if not supabase:
+        return jsonify({'error': 'DB not initialized'}), 500
+    try:
+        res = supabase.table('student_database').select('*').eq('nim_id', nim_id).execute()
+        if not res.data:
+            return jsonify({'error': 'Student not found'}), 404
+        student = res.data[0]
+        student.pop('password', None)
+
+        contribs_res = supabase.table('task_contributors').select('task_id, points, contribution_detail').eq('nim_id', nim_id).execute()
+        task_ids = [c['task_id'] for c in contribs_res.data]
+        tasks_map = {}
+        if task_ids:
+            tasks_res = supabase.table('task_data').select('task_id, task_name, status_id, type_id').in_('task_id', task_ids).execute()
+            tasks_map = {t['task_id']: t for t in tasks_res.data}
+
+        contributions = []
+        for c in contribs_res.data:
+            t = tasks_map.get(c['task_id'], {})
+            contributions.append({
+                'task_id': c['task_id'],
+                'task_name': t.get('task_name', c['task_id']),
+                'status_id': t.get('status_id', 0),
+                'type_id': t.get('type_id', 0),
+                'points': c['points'],
+                'contribution_detail': c.get('contribution_detail', ''),
+            })
+
+        return jsonify({'student': student, 'contributions': contributions}), 200
+    except Exception as e:
+        print(f"[Supabase Error] get_student failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/students/<nim_id>', methods=['PUT'])
+@login_required
+def update_student(nim_id):
+    """Update a single student's editable fields."""
+    if not supabase:
+        return jsonify({'error': 'DB not initialized'}), 500
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid request body'}), 400
+    try:
+        allowed = ['name_id', 'email_id', 'department_id', 'score']
+        update = {k: data[k] for k in allowed if k in data}
+        if 'department_id' in update:
+            update['department_id'] = int(update['department_id'])
+        if 'score' in update:
+            update['score'] = float(update['score'])
+        supabase.table('student_database').update(update).eq('nim_id', nim_id).execute()
+        return jsonify({'message': 'Student updated'}), 200
+    except Exception as e:
+        print(f"[Supabase Error] update_student failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/students/<nim_id>', methods=['DELETE'])
+@login_required
+def delete_student(nim_id):
+    """Permanently delete a student from both Supabase Auth and the database."""
+    if not supabase:
+        return jsonify({'error': 'DB not initialized'}), 500
+    try:
+        res = supabase.table('student_database').select('user_id').eq('nim_id', nim_id).execute()
+        if not res.data:
+            return jsonify({'error': 'Student not found'}), 404
+        user_id = res.data[0].get('user_id')
+
+        supabase.table('task_contributors').delete().eq('nim_id', nim_id).execute()
+        supabase.table('student_database').delete().eq('nim_id', nim_id).execute()
+
+        if user_id:
+            try:
+                supabase.auth.admin.delete_user(user_id)
+            except Exception as auth_e:
+                print(f"[Auth] Could not delete auth user {user_id}: {auth_e}")
+
+        _sync_student_stats()
+        return jsonify({'message': f'Student {nim_id} deleted successfully'}), 200
+    except Exception as e:
+        print(f"[Supabase Error] delete_student failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/students/<nim_id>/reset-password', methods=['POST'])
+@login_required
+def reset_student_password(nim_id):
+    """Generate and set a new random password for a student."""
+    if not supabase:
+        return jsonify({'error': 'DB not initialized'}), 500
+    try:
+        import secrets
+        res = supabase.table('student_database').select('user_id').eq('nim_id', nim_id).execute()
+        if not res.data:
+            return jsonify({'error': 'Student not found'}), 404
+        user_id = res.data[0].get('user_id')
+        if not user_id:
+            return jsonify({'error': 'Student has no linked auth account'}), 400
+        new_password = secrets.token_urlsafe(12)
+        supabase.auth.admin.update_user_by_id(user_id, {'password': new_password})
+        return jsonify({'message': 'Password reset successfully', 'new_password': new_password}), 200
+    except Exception as e:
+        print(f"[Supabase Error] reset_student_password failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/students/sync-scores', methods=['POST'])
+@login_required
+def sync_scores():
+    """Recalculate all student scores and job_id_lists from task_contributors."""
+    try:
+        _sync_student_stats()
+        students = _read_students()
+        return jsonify({'message': 'Scores synced successfully', 'students': students}), 200
+    except Exception as e:
+        print(f"[Supabase Error] sync_scores failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 # ── Run ──────────────────────────────────────────────

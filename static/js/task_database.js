@@ -24,10 +24,10 @@ function renderTable(filter = '') {
     const q = filter.toLowerCase();
 
     let filtered = tasks.filter(t =>
-        (t.task_name || '').toLowerCase().includes(q) ||
-        (t.pic || '').toLowerCase().includes(q) ||
-        (TASK_TYPES[t.type_id] || '').toLowerCase().includes(q) ||
-        (TASK_STATUSES[t.status_id] || '').toLowerCase().includes(q)
+        String(t.task_name || '').toLowerCase().includes(q) ||
+        String(t.pic || '').toLowerCase().includes(q) ||
+        String(TASK_TYPES[t.type_id] || '').toLowerCase().includes(q) ||
+        String(TASK_STATUSES[t.status_id] || '').toLowerCase().includes(q)
     );
 
     // Sort
@@ -72,6 +72,19 @@ function renderTable(filter = '') {
             <td>${esc(t.start_date || '—')}</td>
             <td>${esc(t.end_date || '—')}</td>
             <td>${esc(t.pic || '—')}</td>
+            <td>
+                <div class="action-group">
+                    <button class="action-btn btn-detail" onclick="openDetail('${esc(t.task_id)}')" title="View tasks detail">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    </button>
+                    <button class="action-btn btn-edit" onclick="openEdit('${esc(t.task_id)}')" title="Edit task">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <button class="action-btn btn-delete" onclick="deleteTask('${esc(t.task_id)}', '${esc(t.task_name)}')" title="Delete task">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                    </button>
+                </div>
+            </td>
         </tr>`;
     }).join('');
 
@@ -151,3 +164,175 @@ function showToast(msg, type = 'success') {
     INIT
     ════════════════════════════════════════════════ */
 renderTable();
+
+
+/* ════════════════════════════════════════════════
+    DRAWER & LOGICS
+    ════════════════════════════════════════════════ */
+const drawer = document.getElementById('detailDrawer');
+const overlay = document.getElementById('drawerOverlay');
+
+function closeDrawer() {
+    drawer?.classList.remove('open');
+    overlay?.classList.remove('open');
+}
+
+document.getElementById('drawerClose')?.addEventListener('click', closeDrawer);
+overlay?.addEventListener('click', closeDrawer);
+
+window.openDetail = async function(taskId) {
+    const t = tasks.find(x => x.task_id === taskId);
+    if (!t) return;
+    
+    let contributorsHtml = '<p style="color:#64748b; font-size:13px;">Loading contributors...</p>';
+    if (document.getElementById('drawerContent')) {
+        document.getElementById('drawerContent').innerHTML = `
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin: 0 0 8px 0; color:#1e293b;">${esc(t.task_name)}</h3>
+                <div style="font-size: 13px; color:#64748b; display:grid; gap:8px; grid-template-columns: auto 1fr;">
+                    <strong>Task ID:</strong> <span>${esc(t.task_id)}</span>
+                    <strong>Status:</strong> <span>${TASK_STATUSES[t.status_id]}</span>
+                    <strong>Type:</strong> <span>${TASK_TYPES[t.type_id]}</span>
+                    <strong>PIC:</strong> <span>${esc(t.pic || '—')}</span>
+                    <strong>Duration:</strong> <span>${esc(t.start_date || '—')} to ${esc(t.end_date || '—')}</span>
+                    <strong>Links:</strong> <span>${esc(t.related_links || '—')}</span>
+                    <strong>Desc:</strong> <span>${esc(t.description || '—')}</span>
+                </div>
+            </div>
+            <h4 style="border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 12px; margin-top: 24px;">Contributors</h4>
+            <div id="drawerContributors">${contributorsHtml}</div>
+        `;
+    }
+
+    drawer?.classList.add('open');
+    overlay?.classList.add('open');
+
+    try {
+        const res = await apiFetch(`/api/tasks/${taskId}/contributors`);
+        if(res.ok) {
+            const contribs = await res.json();
+            const contribContainer = document.getElementById('drawerContributors');
+            if (contribContainer) {
+                if(contribs.length === 0) {
+                    contribContainer.innerHTML = '<p style="color:#64748b; font-size:13px;">No contributors found.</p>';
+                } else {
+                    let html = '<ul style="list-style:none; padding:0; margin:0; font-size:13px;">';
+                    for(let c of contribs) {
+                        html += `<li style="padding: 8px 0; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between;">
+                            <span><strong>${esc(c.student_name)}</strong> (${esc(c.nim_id)})</span>
+                            <span style="color:#00919A; font-weight:bold;">${c.points} pts</span>
+                        </li>`;
+                    }
+                    html += '</ul>';
+                    contribContainer.innerHTML = html;
+                }
+            }
+        } else {
+            if(document.getElementById('drawerContributors'))
+                document.getElementById('drawerContributors').innerHTML = '<p style="color:#ef4444; font-size:13px;">Failed to load contributors.</p>';
+        }
+    } catch(e) {
+        if(document.getElementById('drawerContributors'))
+            document.getElementById('drawerContributors').innerHTML = '<p style="color:#ef4444; font-size:13px;">Error loading contributors.</p>';
+    }
+}
+
+/* ════════════════════════════════════════════════
+    EDIT MODAL
+    ════════════════════════════════════════════════ */
+const editModal = document.getElementById('editModal');
+
+window.openEdit = function(taskId) {
+    const t = tasks.find(x => x.task_id === taskId);
+    if (!t) return;
+    
+    document.getElementById('editTaskId').value = t.task_id || '';
+    document.getElementById('editTaskName').value = t.task_name || '';
+    document.getElementById('editType').value = t.type_id || '1';
+    document.getElementById('editStatus').value = t.status_id || '1';
+    document.getElementById('editStartDate').value = t.start_date || '';
+    document.getElementById('editEndDate').value = t.end_date || '';
+    document.getElementById('editPic').value = t.pic || '';
+    document.getElementById('editLinks').value = t.related_links || '';
+    document.getElementById('editDesc').value = t.description || '';
+    
+    editModal?.classList.add('open');
+};
+
+function closeEditModal() {
+    editModal?.classList.remove('open');
+}
+
+document.getElementById('cancelEdit')?.addEventListener('click', closeEditModal);
+
+document.getElementById('editTaskForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const taskId = document.getElementById('editTaskId').value;
+    const saveBtn = e.target.querySelector('button[type="submit"]');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    const payload = {
+        task_name: document.getElementById('editTaskName').value,
+        type_id: parseInt(document.getElementById('editType').value),
+        status_id: parseInt(document.getElementById('editStatus').value),
+        start_date: document.getElementById('editStartDate').value,
+        end_date: document.getElementById('editEndDate').value,
+        pic: document.getElementById('editPic').value,
+        related_links: document.getElementById('editLinks').value,
+        description: document.getElementById('editDesc').value,
+    };
+
+    try {
+        const res = await apiFetch(`/api/tasks/${taskId}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+            const idx = tasks.findIndex(x => x.task_id === taskId);
+            if(idx !== -1) {
+                tasks[idx] = { ...tasks[idx], ...payload, type_name: TASK_TYPES[payload.type_id], status_name: TASK_STATUSES[payload.status_id] };
+            }
+            renderTable(document.getElementById('searchInput').value);
+            closeEditModal();
+            if(typeof showToast === 'function') showToast('Task updated successfully');
+            
+            // Wait a brief moment to show success before refreshing contributors UI if it is open
+            if(drawer?.classList.contains('open')) {
+                // If it was editing the same task being viewed
+                openDetail(taskId);
+            }
+        } else {
+            if(typeof showToast === 'function') showToast(data.error || 'Update failed', 'error');
+        }
+    } catch (err) {
+        if(typeof showToast === 'function') showToast('Network error', 'error');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Changes';
+    }
+});
+
+/* ════════════════════════════════════════════════
+    DELETE LOGIC
+    ════════════════════════════════════════════════ */
+window.deleteTask = async function(taskId, taskName) {
+    if (!confirm(`Are you sure you want to permanently delete task "${taskName}"?\nThis will remove it and all related contributions!`)) return;
+
+    try {
+        const res = await apiFetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+        const data = await res.json();
+
+        if (res.ok) {
+            tasks = tasks.filter(t => t.task_id !== taskId);
+            renderTable(document.getElementById('searchInput')?.value || '');
+            if(typeof showToast === 'function') showToast(data.message || 'Task deleted successfully');
+        } else {
+            if(typeof showToast === 'function') showToast(data.error || 'Failed to delete task', 'error');
+        }
+    } catch (err) {
+        if(typeof showToast === 'function') showToast('Network error: ' + err.message, 'error');
+    }
+};
