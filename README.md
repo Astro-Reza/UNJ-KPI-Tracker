@@ -1,4 +1,4 @@
-# KPI Dashboard — International Office
+# KPI Dashboard — International Office 2.0
 
 A lightweight, feature-rich Flask-based web application designed for the International Office to manage student registrations, track project tasks, monitor KPI (Key Performance Indicator) scores, and maintain a centralized database.
 
