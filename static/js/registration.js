@@ -1,9 +1,60 @@
 /* ============================================
    Registration Page — Logic
-   Posts to Flask backend, renders table from API
    ============================================ */
 
-// Department mapping (for client-side display)
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, updatePassword, EmailAuthProvider, reauthenticateWithCredential, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+
+// 1. DOM references (Keep these at the top)
+const authTabs = document.getElementById('authTabs');
+const tabRegister = document.getElementById('tabRegister');
+const tabSelectTasks = document.getElementById('tabSelectTasks');
+const form = document.getElementById('registrationForm');
+const loginForm = document.getElementById('loginForm');
+const taskSelectionContainer = document.getElementById('taskSelectionContainer');
+const nameInput = document.getElementById('nameInput');
+const emailInput = document.getElementById('emailInput');
+const deptSelect = document.getElementById('departmentSelect');
+const nimInput = document.getElementById('nimInput');
+const loginEmailInput = document.getElementById('loginEmailInput');
+const loginPasswordInput = document.getElementById('loginPasswordInput');
+const profileName = document.getElementById('profileName');
+const profileNim = document.getElementById('profileNim');
+const profileDept = document.getElementById('profileDept');
+const tasksList = document.getElementById('tasksList');
+const btnSaveTasks = document.getElementById('btnSaveTasks');
+const btnBackToLogin = document.getElementById('btnBackToLogin');
+const btnToggleChangePassword = document.getElementById('btnToggleChangePassword');
+const changePasswordForm = document.getElementById('changePasswordForm');
+const oldPasswordInput = document.getElementById('oldPasswordInput');
+const newPasswordInput = document.getElementById('newPasswordInput');
+const confirmPasswordInput = document.getElementById('confirmPasswordInput');
+const btnCancelChangePassword = document.getElementById('btnCancelChangePassword');
+const toast = document.getElementById('toast');
+const toastMessage = document.getElementById('toastMessage');
+
+// 3. Firebase Initialization
+
+// 3. Firebase Initialization
+
+let firebaseAuth;
+try {
+    if (!window.firebaseConfig || !window.firebaseConfig.apiKey) {
+        throw new Error("Firebase configuration is missing. Check your .env file.");
+    }
+    const app = initializeApp(window.firebaseConfig);
+    firebaseAuth = getAuth(app);
+    console.log("Firebase initialized successfully");
+} catch (err) {
+    console.error("Firebase Initialization Error:", err);
+    // We don't showToast here yet because it might be too early, 
+    // but the error will be in the F12 console.
+}
+
+// State
+let currentStudentId = null;
+
+// Department mapping
 const DEPARTMENTS = {
     1: 'Head of International Office',
     2: 'Secretary',
@@ -13,75 +64,30 @@ const DEPARTMENTS = {
     6: 'Community Impact'
 };
 
-// DOM references
-const authTabs = document.getElementById('authTabs');
-const tabRegister = document.getElementById('tabRegister');
-const tabSelectTasks = document.getElementById('tabSelectTasks');
-
-const form = document.getElementById('registrationForm');
-const loginForm = document.getElementById('loginForm');
-const taskSelectionContainer = document.getElementById('taskSelectionContainer');
-
-// Register Form elements
-const nameInput = document.getElementById('nameInput');
-const emailInput = document.getElementById('emailInput');
-const deptSelect = document.getElementById('departmentSelect');
-const nimInput = document.getElementById('nimInput');
-
-// Login Form elements
-const loginNimInput = document.getElementById('loginNimInput');
-const loginPasswordInput = document.getElementById('loginPasswordInput');
-
-// Task Selection elements
-const profileName = document.getElementById('profileName');
-const profileNim = document.getElementById('profileNim');
-const profileDept = document.getElementById('profileDept');
-const tasksList = document.getElementById('tasksList');
-const btnSaveTasks = document.getElementById('btnSaveTasks');
-const btnBackToLogin = document.getElementById('btnBackToLogin');
-
-// Change Password elements
-const btnToggleChangePassword = document.getElementById('btnToggleChangePassword');
-const changePasswordForm = document.getElementById('changePasswordForm');
-const oldPasswordInput = document.getElementById('oldPasswordInput');
-const newPasswordInput = document.getElementById('newPasswordInput');
-const confirmPasswordInput = document.getElementById('confirmPasswordInput');
-const btnCancelChangePassword = document.getElementById('btnCancelChangePassword');
-
-const toast = document.getElementById('toast');
-const toastMessage = document.getElementById('toastMessage');
-
-// State
-let currentStudentId = null;
-
-// ── Tab Switching ──
-tabRegister.addEventListener('click', () => {
-    tabRegister.classList.add('active');
-    tabSelectTasks.classList.remove('active');
-    form.classList.remove('hidden');
-    loginForm.classList.add('hidden');
-    taskSelectionContainer.classList.add('hidden');
-    clearErrors();
-});
-
-tabSelectTasks.addEventListener('click', () => {
-    tabSelectTasks.classList.add('active');
-    tabRegister.classList.remove('active');
-    loginForm.classList.remove('hidden');
-    form.classList.add('hidden');
-    taskSelectionContainer.classList.add('hidden');
-    clearErrors();
-});
-
 // ── Form Submission → POST to backend ──
 form.addEventListener('submit', async function (e) {
     e.preventDefault();
+    console.log("Register button clicked!");
+    
+    if (!firebaseAuth) { 
+        console.error("Firebase Auth is not initialized!");
+        showToast("Authentication system not ready. Check console for errors."); 
+        return; 
+    }
+    
+    const btn = document.getElementById('btnSubmit');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Processing...";
+
     clearErrors();
 
     const name = nameInput.value.trim();
     const email = emailInput.value.trim();
     const dept = parseInt(deptSelect.value);
     const nim = nimInput.value.trim();
+
+    console.log("Inputs gathered:", { name, email, dept, nim });
 
     // Client-side validation
     let valid = true;
@@ -108,57 +114,84 @@ form.addEventListener('submit', async function (e) {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
     try {
-        const res = await fetch('/api/register', {
+        console.log("Attempting to create Firebase account...");
+        // 1. Create user in Firebase Auth using client SDK
+        const userCredential = await createUserWithEmailAndPassword(firebaseAuth, email, nim);
+        const user = userCredential.user;
+        console.log("Firebase account created:", user.uid);
+        
+        console.log("Attempting to send verification email...");
+        // 2. Send verification email
+        await sendEmailVerification(user);
+        console.log("Verification email sent successfully!");
+        
+        // 3. Get the ID token
+        const idToken = await user.getIdToken();
+        console.log("ID Token retrieved.");
+
+        console.log("Saving student data to backend Firestore (Pre-verification allowed)...");
+        const res = await fetch('/api/student/register', {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`,
                 'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({
                 name_id: name,
-                email_id: email,
                 department_id: dept,
                 nim_id: nim
             })
         });
 
         const data = await res.json();
+        console.log("Backend response:", data);
 
         if (!res.ok) {
-            // Server-side validation errors
-            if (data.errors) {
-                if (data.errors.name_id) showError('nameGroup', data.errors.name_id);
-                if (data.errors.email_id) showError('emailGroup', data.errors.email_id);
-                if (data.errors.department_id) showError('deptGroup', data.errors.department_id);
-                if (data.errors.nim_id) showError('nimGroup', data.errors.nim_id);
-            } else {
-                showToast(data.error || 'Registration failed');
+            // Special case: ignore 'email not verified' error during INITIAL registration
+            // because we WANT to save their data now, but they can't login yet.
+            if (data.code !== 'email_not_verified') {
+                if (data.errors) {
+                    if (data.errors.name_id) showError('nameGroup', data.errors.name_id);
+                    if (data.errors.department_id) showError('deptGroup', data.errors.department_id);
+                    if (data.errors.nim_id) showError('nimGroup', data.errors.nim_id);
+                } else {
+                    showToast(data.error || 'Registration failed');
+                }
+                return;
             }
-            return;
         }
 
         // Success
         form.reset();
         nameInput.focus();
-        showToast(`✓ ${name} registered successfully!`);
+        showToast(`✓ ${name} registered! Check your email for a verification link.`);
 
     } catch (err) {
-        console.error('Registration error:', err);
-        showToast('Network error — please try again');
+        console.error('Registration Error Detail:', err);
+        let msg = 'Network error — please try again';
+        if (err.code === 'auth/email-already-in-use') msg = 'Email is already registered.';
+        if (err.code === 'auth/weak-password') msg = 'Password (NIM) must be at least 6 characters.';
+        if (err.code === 'auth/network-request-failed') msg = 'Firebase connection failed. Check your internet.';
+        showToast(`${msg} (${err.code || err.message})`);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
     }
 });
 
 // ── Funnel 2: Login returning student ──
 loginForm.addEventListener('submit', async function (e) {
     e.preventDefault();
+    if (!firebaseAuth) { showToast("Authentication system not ready."); return; }
     clearErrors();
 
-    const nim = loginNimInput.value.trim();
+    const email = loginEmailInput.value.trim();
     const password = loginPasswordInput.value.trim();
 
     let valid = true;
-    if (!nim) {
-        showError('loginNimGroup', 'Student ID (NIM) is required');
+    if (!email) {
+        showError('loginEmailGroup', 'Email Address is required');
         valid = false;
     }
     if (!password) {
@@ -171,19 +204,37 @@ loginForm.addEventListener('submit', async function (e) {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
     try {
-        const res = await fetch('/api/student/auth', {
-            method: 'POST',
+        // 1. Authenticate with Firebase Client SDK
+        const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+        const user = userCredential.user;
+
+        // 2. CHECK EMAIL VERIFICATION
+        if (!user.emailVerified) {
+            console.warn("User attempted login without verification.");
+            showToast("Please verify your email before logging in. Check your inbox!");
+            
+            // Optionally resend email automatically if they keep trying
+            await sendEmailVerification(user);
+            
+            // Force sign out so they don't stay in a half-logged-in state
+            await signOut(firebaseAuth);
+            return;
+        }
+
+        const idToken = await user.getIdToken();
+        console.log("Login successful, token retrieved.");
+        const res = await fetch('/api/student/me', {
+            method: 'GET',
             headers: { 
-                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`,
                 'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify({ nim_id: nim, password: password })
+            }
         });
 
         const data = await res.json();
 
         if (!res.ok) {
-            showToast(data.error || 'Login failed');
+            showToast(data.error || 'Failed to fetch student data');
             return;
         }
 
@@ -203,8 +254,12 @@ loginForm.addEventListener('submit', async function (e) {
         renderTasks(data.tasks, studentTaskIds);
 
     } catch (err) {
-        console.error('Login error:', err);
-        showToast('Network error — please try again');
+        console.error('Login error detail:', err);
+        let msg = 'Network error — please try again';
+        if (err.code === 'auth/invalid-credential') msg = 'Invalid email or password.';
+        if (err.code === 'auth/user-not-found') msg = 'No account found with this email.';
+        if (err.code === 'auth/network-request-failed') msg = 'Firebase connection failed. Check your internet.';
+        showToast(`${msg} (${err.code || err.message})`);
     }
 });
 
@@ -249,10 +304,12 @@ btnSaveTasks.addEventListener('click', async () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
     try {
+        const idToken = await firebaseAuth.currentUser.getIdToken();
         const res = await fetch('/api/student/tasks', {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`,
                 'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({
@@ -277,13 +334,15 @@ btnSaveTasks.addEventListener('click', async () => {
     }
 });
 
-// ── Back to Login ──
 btnBackToLogin.addEventListener('click', () => {
+    if (firebaseAuth.currentUser) {
+        signOut(firebaseAuth);
+    }
     taskSelectionContainer.classList.add('hidden');
     loginForm.classList.remove('hidden');
     authTabs.classList.remove('hidden');
     currentStudentId = null;
-    loginNimInput.value = '';
+    loginEmailInput.value = '';
     loginPasswordInput.value = '';
     
     // reset change password UI
@@ -338,31 +397,20 @@ changePasswordForm.addEventListener('submit', async function(e) {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
     try {
-        const res = await fetch('/api/student/change_password', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify({
-                nim_id: currentStudentId,
-                old_password: oldPwd,
-                new_password: newPwd
-            })
-        });
+        const user = firebaseAuth.currentUser;
+        const credential = EmailAuthProvider.credential(user.email, oldPwd);
+        
+        await reauthenticateWithCredential(user, credential);
+        await updatePassword(user, newPwd);
 
-        const data = await res.json();
-
-        if (!res.ok) {
-            showToast(data.error || 'Failed to update password');
-        } else {
-            showToast('✓ Password updated successfully!');
-            changePasswordForm.classList.add('hidden');
-            changePasswordForm.reset();
-        }
+        showToast('✓ Password updated successfully!');
+        changePasswordForm.classList.add('hidden');
+        changePasswordForm.reset();
     } catch (err) {
         console.error('Change password error:', err);
-        showToast('Network error — please try again');
+        let msg = 'Network error — please try again';
+        if (err.code === 'auth/invalid-credential') msg = 'Incorrect current password.';
+        showToast(msg);
     } finally {
         btnSubmit.disabled = false;
         btnSubmit.textContent = 'Update Password';

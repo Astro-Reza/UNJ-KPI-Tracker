@@ -9,6 +9,40 @@
     <title>Registration Page — International Office</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='sources/icon/SITE-ICON.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/registration.css') }}">
+    <script>
+        window.firebaseConfig = {{ firebase_config | tojson }};
+
+        // Immediate UI logic that works even if Firebase fails
+        document.addEventListener('DOMContentLoaded', () => {
+            const tabRegister = document.getElementById('tabRegister');
+            const tabSelectTasks = document.getElementById('tabSelectTasks');
+            const form = document.getElementById('registrationForm');
+            const loginForm = document.getElementById('loginForm');
+            const taskSelectionContainer = document.getElementById('taskSelectionContainer');
+
+            const clearErrors = () => {
+                document.querySelectorAll('.form-group').forEach(g => g.classList.remove('error'));
+            };
+
+            tabRegister.addEventListener('click', () => {
+                tabRegister.classList.add('active');
+                tabSelectTasks.classList.remove('active');
+                form.classList.remove('hidden');
+                loginForm.classList.add('hidden');
+                taskSelectionContainer.classList.add('hidden');
+                clearErrors();
+            });
+
+            tabSelectTasks.addEventListener('click', () => {
+                tabSelectTasks.classList.add('active');
+                tabRegister.classList.remove('active');
+                loginForm.classList.remove('hidden');
+                form.classList.add('hidden');
+                taskSelectionContainer.classList.add('hidden');
+                clearErrors();
+            });
+        });
+    </script>
 </head>
 
 <body>
@@ -74,10 +108,10 @@
 
         <!-- Funnel 2: Login Form for Returning Student -->
         <form id="loginForm" autocomplete="off">
-            <!-- Student ID (NIM) -->
-            <div class="form-group" id="loginNimGroup">
-                <label for="loginNimInput">Student ID (NIM)</label>
-                <input type="text" id="loginNimInput" placeholder="e.g. 2301234567">
+            <!-- Email -->
+            <div class="form-group" id="loginEmailGroup">
+                <label for="loginEmailInput">Email Address</label>
+                <input type="email" id="loginEmailInput" placeholder="e.g. xyz@university.edu">
                 <span class="error-msg">Error</span>
             </div>
 
@@ -155,7 +189,7 @@
         <span id="toastMessage"></span>
     </div>
 
-    <script src="{{ url_for('static', filename='js/registration.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/registration.js') }}"></script>
 </body>
 
 </html>

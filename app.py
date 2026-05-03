@@ -58,10 +58,11 @@ def set_security_headers(response):
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline' https://www.gstatic.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
-        "img-src 'self' data:;"
+        "img-src 'self' data:; "
+        "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com;"
     )
     return response
 
@@ -118,6 +119,8 @@ if not ADMIN_USERNAME or not ADMIN_PASSWORD_HASH:
     raise RuntimeError("Admin credentials not set in environment.")
 
 
+from flask import g
+
 def login_required(f):
     """Decorator that redirects to /login if user is not authenticated."""
     @functools.wraps(f)
@@ -128,6 +131,32 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
+def student_token_required(check_verified=True):
+    """Decorator that verifies Firebase ID token. check_verified=False allows new registrations."""
+    def decorator(f):
+        @functools.wraps(f)
+        def decorated_function(*args, **kwargs):
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return jsonify({'error': 'Missing or invalid token'}), 401
+            
+            id_token = auth_header.split('Bearer ')[1]
+            try:
+                decoded_token = auth.verify_id_token(id_token)
+                
+                # Check email verification only if requested
+                if check_verified and not decoded_token.get('email_verified'):
+                    return jsonify({'error': 'Email not verified', 'code': 'email_not_verified'}), 403
+                    
+                g.student_uid = decoded_token['uid']
+                g.student_email = decoded_token.get('email')
+            except Exception as e:
+                return jsonify({'error': f'Invalid token: {e}'}), 401
+                
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 # Column headers (used for CSV export generation)
 CSV_HEADER = ['name_id', 'email_id', 'department_id', 'nim_id', 'score', 'job_id_list']
@@ -672,7 +701,16 @@ def task_database_page():
 
 @app.route('/student')
 def registration():
-    return render_template('registration.html')
+    firebase_config = {
+        'apiKey': os.environ.get('FIREBASE_API_KEY'),
+        'authDomain': os.environ.get('FIREBASE_AUTH_DOMAIN'),
+        'projectId': os.environ.get('FIREBASE_PROJECT_ID'),
+        'storageBucket': os.environ.get('FIREBASE_STORAGE_BUCKET'),
+        'messagingSenderId': os.environ.get('FIREBASE_MESSAGING_SENDER_ID'),
+        'appId': os.environ.get('FIREBASE_APP_ID'),
+        'measurementId': os.environ.get('FIREBASE_MEASUREMENT_ID')
+    }
+    return render_template('registration.html', firebase_config=firebase_config)
 
 
 @app.route('/leaderboard')
@@ -775,6 +813,46 @@ def register_student():
     }), 201
 
 
+@app.route('/api/student/register', methods=['POST'])
+@csrf.exempt
+@student_token_required(check_verified=False)
+def student_self_register():
+    """Saves a new student to Firestore after they register via Firebase Client SDK."""
+    data = request.get_json()
+    if not data: return jsonify({'error': 'Invalid request body'}), 400
+    
+    name_id = (data.get('name_id') or '').strip()
+    department_id = data.get('department_id')
+    nim_id = (data.get('nim_id') or '').strip()
+    
+    errors = {}
+    if not name_id: errors['name_id'] = 'Student name is required'
+    if not department_id or int(department_id) not in DEPARTMENTS: errors['department_id'] = 'Please select a valid department'
+    if not nim_id: errors['nim_id'] = 'Student ID (NIM) is required'
+    if errors: return jsonify({'errors': errors}), 422
+    
+    department_id = int(department_id)
+    email_id = g.student_email
+    
+    try:
+        docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
+        if docs:
+            return jsonify({'error': 'Student with this NIM already exists.'}), 409
+            
+        fs.collection('students').document(g.student_uid).set({
+            'name_id': name_id,
+            'email_id': email_id,
+            'department_id': department_id,
+            'nim_id': nim_id,
+            'score': 0.0,
+            'job_id_list': []
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+        
+    return jsonify({'message': 'Registered successfully!'}), 201
+
 @app.route('/api/students/bulk-import', methods=['POST'])
 @login_required
 def bulk_import_students():
@@ -854,48 +932,23 @@ def save_all_students():
         return jsonify({'error': str(exc)}), 500
     return jsonify({'message': f'Saved {len(data["students"])} students'}), 200
 
-@app.route('/api/student/auth', methods=['POST'])
+@app.route('/api/student/me', methods=['GET'])
 @csrf.exempt
-@limiter.limit("10 per minute")
-def student_auth():
-    """Authenticate a returning student by NIM and password (default NIM). Return student and available tasks."""
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'Invalid request body'}), 400
-        
-    nim_id = (data.get('nim_id') or '').strip()
-    password = (data.get('password') or '').strip()
-    
-    if not nim_id or not password:
-        return jsonify({'error': 'NIM and password are required'}), 400
-        
+@student_token_required()
+def get_student_me():
+    """Return the authenticated student's profile and available tasks."""
     try:
-        docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
+        # Use g.student_email which we got from the token
+        docs = list(fs.collection('students').where('email_id', '==', g.student_email).limit(1).stream())
     except Exception as e:
-        print(f"[Firestore Error] student_auth failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] get_student_me failed. Type: {type(e).__name__}, Error: {e}")
         return jsonify({'error': 'Database error'}), 500
         
     if not docs:
-        return jsonify({'error': 'Student not found'}), 404
+        return jsonify({'error': 'Student profile not found in database'}), 404
+        
     student = docs[0].to_dict()
-    email = student.get('email_id')
-        
-    try:
-        import httpx
-        payload = {'email': email, 'password': password, 'returnSecureToken': True}
-        api_key = os.environ.get('FIREBASE_API_KEY')
-        url = f'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}'
-        
-        r = httpx.post(url, json=payload)
-        
-        if r.status_code != 200:
-            error_data = r.json()
-            error_message = error_data.get('error', {}).get('message', 'Unknown Firebase Auth error')
-            return jsonify({'error': f"Authentication failed: {error_message}"}), 401
-            
-    except Exception as e:
-        return jsonify({'error': f"Internal server error during auth: {str(e)}"}), 500
-        
+    
     tasks = _read_tasks()
     available_tasks = [t for t in tasks if t['status_id'] in (1, 2, 3)]
     
@@ -910,53 +963,11 @@ def student_auth():
         'tasks': available_tasks
     }), 200
 
-@app.route('/api/student/change_password', methods=['POST'])
-@csrf.exempt
-@limiter.limit("5 per minute")
-def change_password():
-    """Change a student's password."""
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'Invalid request body'}), 400
-        
-    nim_id = (data.get('nim_id') or '').strip()
-    old_password = (data.get('old_password') or '').strip()
-    new_password = (data.get('new_password') or '').strip()
-    
-    if not nim_id or not old_password or not new_password:
-        return jsonify({'error': 'All fields are required'}), 400
-        
-    try:
-        docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
-    except Exception as e:
-        print(f"[Firestore Error] change_password lookup failed. Type: {type(e).__name__}, Error: {e}")
-        return jsonify({'error': 'Database error'}), 500
-        
-    if not docs:
-        return jsonify({'error': 'Student not found'}), 404
-        
-    student = docs[0].to_dict()
-    email = student.get('email_id')
-    
-    try:
-        
-        import requests
-        payload = {'email': email, 'password': old_password, 'returnSecureToken': True}
-        api_key = os.environ.get('FIREBASE_API_KEY')
-        r = requests.post(f'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}', json=payload)
-        if r.status_code != 200: raise Exception('Invalid password')
-        if False:
-            return jsonify({'error': 'Failed to establish an authenticated session'}), 401
-        auth.update_user(user.uid, password=new_password)
-    except Exception as e:
-        return jsonify({'error': f'Incorrect current password or update failed: {e}'}), 401
-    
-    return jsonify({'message': 'Password updated successfully!'}), 200
-
 @app.route('/api/student/tasks', methods=['POST'])
 @csrf.exempt
+@student_token_required()
 def update_student_tasks():
-    """Update a specific student's selected tasks without admin auth"""
+    """Update a specific student's selected tasks with token verification"""
     data = request.get_json()
     if not data:
         return jsonify({'error': 'Invalid request body'}), 400
@@ -966,6 +977,11 @@ def update_student_tasks():
     
     if not nim_id:
         return jsonify({'error': 'NIM is required'}), 400
+        
+    docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
+    if not docs or docs[0].to_dict().get('email_id') != g.student_email:
+         return jsonify({'error': 'Unauthorized to modify this student'}), 403
+
     try:
         success = _update_student_selection(nim_id, task_ids)
     except Exception as exc:
