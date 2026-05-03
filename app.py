@@ -67,25 +67,36 @@ def set_security_headers(response):
 
 # Firebase Initialization
 try:
-    service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
-    if service_account_json:
-        # Strip surrounding quotes that some .env parsers may add
-        service_account_json = service_account_json.strip().strip("'\"")
-        try:
-            service_account_info = json.loads(service_account_json)
-            cred = credentials.Certificate(service_account_info)
-        except json.JSONDecodeError as je:
-            print(f"[Startup Error] Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON: {je}")
-            print(f"[Startup Error] First 100 chars: {service_account_json[:100]}")
-            raise RuntimeError(f"FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON: {je}") from je
-    else:
+    # Try to construct service account from individual environment variables
+    # This is more reliable for Vercel's environment variable UI
+    firebase_config = {
+        "type": os.environ.get("FIREBASE_TYPE", "service_account"),
+        "project_id": os.environ.get("FIREBASE_PROJECT_ID"),
+        "private_key_id": os.environ.get("FIREBASE_PRIVATE_KEY_ID"),
+        "private_key": os.environ.get("FIREBASE_PRIVATE_KEY", "").replace('\\n', '\n'),
+        "client_email": os.environ.get("FIREBASE_CLIENT_EMAIL"),
+        "client_id": os.environ.get("FIREBASE_CLIENT_ID"),
+        "auth_uri": os.environ.get("FIREBASE_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
+        "token_uri": os.environ.get("FIREBASE_TOKEN_URI", "https://oauth2.googleapis.com/token"),
+        "auth_provider_x509_cert_url": os.environ.get("FIREBASE_AUTH_PROVIDER_X509_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs"),
+        "client_x509_cert_url": os.environ.get("FIREBASE_CLIENT_X509_CERT_URL"),
+        "universe_domain": os.environ.get("FIREBASE_UNIVERSE_DOMAIN", "googleapis.com")
+    }
+
+    # Validation: Check if the most critical parts are missing
+    if not firebase_config["private_key"] or not firebase_config["client_email"]:
+        # Fallback for local development using the file path
         cred_path = os.environ.get("FIREBASE_CREDENTIALS_PATH", "./serviceAccountKey.json")
-        if not os.path.exists(cred_path):
+        if os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+        else:
             raise RuntimeError(
-                f"Neither FIREBASE_SERVICE_ACCOUNT_JSON env var nor service account file at '{cred_path}' were found. "
-                "Please set FIREBASE_SERVICE_ACCOUNT_JSON in your environment variables."
+                "Firebase configuration is incomplete. "
+                "Ensure individual FIREBASE_* environment variables are set or "
+                "serviceAccountKey.json exists."
             )
-        cred = credentials.Certificate(cred_path)
+    else:
+        cred = credentials.Certificate(firebase_config)
 
     firebase_admin.initialize_app(cred, {
         'databaseURL': os.environ.get('DATABASE_URL')
@@ -153,12 +164,13 @@ def debug_env():
     """Shows which critical environment variables are SET vs MISSING. Values are hidden."""
     keys = [
         'SECRET_KEY', 'ADMIN_USERNAME', 'ADMIN_PASSWORD_HASH',
-        'FIREBASE_SERVICE_ACCOUNT_JSON', 'DATABASE_URL', 'FIREBASE_API_KEY',
+        'FIREBASE_TYPE', 'FIREBASE_PROJECT_ID', 'FIREBASE_PRIVATE_KEY_ID',
+        'FIREBASE_PRIVATE_KEY', 'FIREBASE_CLIENT_EMAIL', 'DATABASE_URL',
     ]
     result = {k: ('SET ✓' if os.environ.get(k) else 'MISSING ✗') for k in keys}
-    sa_json = os.environ.get('FIREBASE_SERVICE_ACCOUNT_JSON', '')
-    result['FIREBASE_SERVICE_ACCOUNT_JSON_len'] = len(sa_json)
-    result['FIREBASE_SERVICE_ACCOUNT_JSON_starts_with'] = sa_json[:15] if sa_json else 'N/A'
+    pk = os.environ.get('FIREBASE_PRIVATE_KEY', '')
+    result['FIREBASE_PRIVATE_KEY_len'] = len(pk)
+    result['FIREBASE_PRIVATE_KEY_starts_with'] = pk[:30] if pk else 'N/A'
     return jsonify(result), 200
 
 
