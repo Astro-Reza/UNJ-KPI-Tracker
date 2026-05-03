@@ -718,20 +718,36 @@ def register_student():
         errors['department_id'] = 'Please select a valid department'
     if not nim_id:
         errors['nim_id'] = 'Student ID (NIM) is required'
-    elif _nim_exists(nim_id):
-        errors['nim_id'] = 'This NIM is already registered'
 
     if errors:
         return jsonify({'errors': errors}), 422
 
     department_id = int(department_id)
     try:
-        pwd = _append_student(name_id, email_id, department_id, nim_id)
+        docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
+        if docs:
+            # Update existing student
+            doc_ref = docs[0].reference
+            uid = doc_ref.id
+            doc_ref.update({
+                'name_id': name_id,
+                'email_id': email_id,
+                'department_id': department_id
+            })
+            try:
+                auth.update_user(uid, email=email_id)
+            except Exception as e:
+                print(f"[Firebase Error] Failed to update auth email for {uid}: {e}")
+            message = f'{name_id} updated successfully!'
+        else:
+            # Create new student
+            pwd = _append_student(name_id, email_id, department_id, nim_id)
+            message = f'{name_id} registered successfully!'
     except RuntimeError as e:
         return jsonify({'error': str(e)}), 500
 
     return jsonify({
-        'message': f'{name_id} registered successfully!',
+        'message': message,
         'student': {
             'name_id': name_id,
             'email_id': email_id,
