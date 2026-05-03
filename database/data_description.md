@@ -1,123 +1,100 @@
-# Main Data Description
+# KPI Dashboard Data Description (Firebase Migration)
 
-## Student Data
-
-- **name_id**: student name
-- **department_id**: department, each student has their own department
-  1. Head of International Office
-  2. Secretary
-  3. Administration
-  4. Media & Design
-  5. Hospitality
-  6. Community Impact
-- **nim_id**: Student ID Number
-- **score**: Calculated score based on performance of the students.
-
-## Task Data
-
-- **task_id**: id number assigned to each jobdesc automatically. The equation is based on the input date + type of jobdesc.
-- **task_name**: The name of the job
-- **type_id**: Type of the job taken by students.
-  1. Publication
-  2. Event
-  3. Camp
-- **start_date**: Starting date of the job.
-- **end_date**: Date the job ended.
-- **status_id**: Status of the job defined as follows:
-  1. Planning
-  2. In-Progress
-  3. Execution
-  4. Documentation
-  5. Lecturer Review
-
-# NAME LIST
-
-This system utilizes a **Relational Model** to ensure data efficiency, eliminate redundancy, and allow for automated calculations. The core logic connects **Who** (Students) with **What** (Tasks) through **How Much** (Contribution Points).
-
-Below is the list of tables and the Supabase database:
-
-## 'Student-Database'
-1. `id`: 		int8
-2. `create_at`: 	timestamptz
-3. `name_id`: 		text
-4. `email_id`: 	text
-5. `department_id`: 	int2
-6. `nim_id`: 		text
-7. `score`: 		float8
-8. `password`: 	text
-
-## 'task_data'
-1. `id`: 			int_8
-2. `created_at`: 	timestamptz
-3. `task_name`: 	text
-4. `type_id`: 		int2
-5. `start_date`: 	date
-6. `end_date`: 	date
-7. `status_id`: 	int2
-8. `pic`: 		text
-9. `related_links`: 	text
-10. `description`: 	text
-
-## 'task_contributors'
-1. `id`: 			int8
-2. `created_at`: 		timestamptz
-3. `task_id`: 		int2
-4. `student_id`: 		int8
-5. `points`: 		float8
-6. `contribution_detail`: 	text
-
-# Relation Explanation
-
-### Supabase Configuration
-To connect this system to your Supabase project, you will need the following environment variables (which you can place in a `.env` file):
-
-- **SUPABASE_URL**: `[INSERT_YOUR_SUPABASE_PROJECT_URL_HERE]`
-- **SUPABASE_KEY**: `[INSERT_YOUR_SUPABASE_SERVICE_ROLE_KEY_HERE]`
-
-### 1. Table: `Student-Database` (The "Who")
-This is the master table containing profiles for all organization members (approx. 80 people).
-* **Primary Key:** `id` (Unique Identifier).
-* **Characteristics:** Each row represents one unique student.
-* **Relationships:**
-    * **One-to-Many** to `task_data` (linked as the primary PIC).
-    * **One-to-Many** to `task_contributors` (linked as a team contributor).
-
-### 2. Table: `task_data` (The "What")
-This table stores the metadata for every project, event, or task within the organization.
-* **Primary Key:** `id` (Unique Identifier).
-* **Note:** The `pic` column should ideally be a **Foreign Key** pointing to `Student-Database.id` to ensure the "Person in Charge" is a registered member.
-* **Relationships:**
-    * **One-to-Many** to `task_contributors`. A single task can have multiple contribution entries from different students.
-
-### 3. Table: `task_contributors` (The "Bridge")
-This is the **Junction Table** that handles the **Many-to-Many** relationship between Students and Tasks.
-* **Primary Key:** `id`.
-* **Foreign Key 1 (`task_id`):** References `task_data.id`.
-* **Foreign Key 2 (`student_id`):** References `Student-Database.id`.
-* **Logic:** Every row in this table records one instance of a student contributing to a specific task, along with the points earned for that specific contribution.
+This document describes the data structure and schema for the KPI Dashboard, currently utilizing **Firebase Firestore** as the primary database. The system follows a relational logic adapted for a NoSQL environment to track student performance and task management.
 
 ---
 
-## Data Flow Illustration
+## 1. Core Data Collections
 
-> **Students (80 Members)** $\rightarrow$ **Contributions (Bridge)** $\leftarrow$ **Tasks (Projects)**
+### **Collection: `students`**
+Contains profiles and performance stats for all organization members.
+- **Document ID**: `user_uid` (Authenticated Firebase User UID)
+- **Fields**:
+  - `name`: (string) Full name of the student.
+  - `email`: (string) University/Personal email.
+  - `department_id`: (int) ID of the department (see [Constants](#constants)).
+  - `nim_id`: (string) Student ID Number (Unique).
+  - `score`: (number) Total accumulated points from finished tasks.
+  - `job_id_list`: (array of strings) List of `task_id`s the student is contributing to.
+  - `created_at`: (timestamp) Registration date.
+  - `updated_at`: (timestamp) Last profile update.
 
-If **Reza** and **Alex** both work on the task **"SeaTeacher 2026"**, the data is recorded as follows:
+### **Collection: `tasks`**
+Stores metadata for projects, events, and recurring tasks.
+- **Document ID**: Auto-generated string (or formatted ID like `YYYYMMDD-Type-Seq`).
+- **Fields**:
+  - `task_name`: (string) Name of the project or activity.
+  - `type_id`: (int) Category of the task (see [Constants](#constants)).
+  - `start_date`: (string/date) Project commencement.
+  - `end_date`: (string/date) Project deadline/completion.
+  - `status_id`: (int) Current status of the task (see [Constants](#constants)).
+  - `pic`: (string) Person in Charge (Name or Student ID).
+  - `related_links`: (string/array) Links to documentation, assets, or reports.
+  - `description`: (string) Detailed brief of the task.
+  - `created_at`: (timestamp)
+  - `updated_at`: (timestamp)
 
-1.  In `task_data`, there is **one entry** for "SeaTeacher 2026" (e.g., ID: 101).
-2.  In `task_contributors`, **two separate rows** are created:
-    * Row 1: `task_id: 101`, `student_id: (Reza's ID)`, `points: 10.0`.
-    * Row 2: `task_id: 101`, `student_id: (Alex's ID)`, `points: 8.5`.
+### **Collection: `contributions`** (The "Bridge")
+Handles the Many-to-Many relationship between Students and Tasks.
+- **Document ID**: Auto-generated string.
+- **Fields**:
+  - `task_id`: (string) Reference to the document in `tasks`.
+  - `uid`: (string) Reference to the document in `students`.
+  - `points`: (number) Contribution points awarded for this specific task.
+  - `created_at`: (timestamp)
 
 ---
 
-## Technical Notes for Developers
+## 2. Constants & Enums
 
-To ensure the Streamlit application remains performant for 80+ active users:
+These mappings are defined in the application logic (`app.py`) to maintain consistency across the UI and database.
 
-* **Referential Integrity:** Set `Foreign Keys` in Supabase to `CASCADE` on delete. If a task is deleted, the associated points in `task_contributors` should be automatically removed to prevent "orphan" data.
-* **Real-time Updates:** Enable **Supabase Realtime** on the `task_contributors` and `task_data` tables. This allows the organization's leadership dashboard to update instantly whenever a member logs new points.
-* **Indexing:** Create indexes on `task_id` and `student_id` within the `task_contributors` table to ensure that fetching a specific student's history is instantaneous.
-* **Calculated Fields:** Total scores should not be typed manually. They should be calculated using a summation of points:
-    $$\text{Total Score} = \sum_{i=1}^{n} \text{points}_i$$
-    Where $n$ is the number of tasks contributed to by a specific student.
+### **Departments (`department_id`)**
+1. **Head of International Office**
+2. **Secretary**
+3. **Administration**
+4. **Media & Design**
+5. **Hospitality**
+6. **Community Impact**
+
+### **Task Types (`type_id`)**
+1. **Publication** (e.g., Social Media, Newsletter)
+2. **Event** (e.g., Seminars, Workshops)
+3. **Camp** (e.g., International Student Camp)
+
+### **Task Statuses (`status_id`)**
+1. **Planning**: Initial drafting and concept.
+2. **In-Progress**: Actively being worked on.
+3. **Execution**: The main event or publication is live.
+4. **Documentation**: Finalizing reports and archives.
+5. **Lecturer Review**: Awaiting approval from mentors/lecturers.
+6. **Done**: Internal completion.
+7. **Finished**: Fully finalized and points are eligible for calculation.
+
+---
+
+## 3. Data Logic & Relations
+
+### **Score Calculation**
+Total scores are calculated dynamically or synced using the `_sync_student_stats` logic:
+$$\text{Student Score} = \sum (\text{points from } \textit{contributions} \text{ where } \textit{task.status\_id} == 7)$$
+
+### **The "Bridge" Logic**
+Instead of a single list, the `contributions` collection acts as a junction.
+- To find all students for a task: Query `contributions` where `task_id == [ID]`.
+- To find all tasks for a student: Query `contributions` where `uid == [UID]`.
+
+### **Referential Integrity**
+During the migration from Supabase, ensuring that `nim_id` and `email` remain unique is handled at the application level and through Firebase Authentication.
+
+---
+
+## 4. Technical Environment
+
+- **Database**: Firebase (Admin SDK 6.0.0+)
+- **Platform**: Flask 3.0.0
+- **Authentication**: Firebase Auth (email/password)
+- **Environment Config**:
+  - `FIREBASE_PROJECT_ID`: The ID of your Firebase project.
+  - `FIREBASE_CREDENTIALS_PATH`: Path to your `serviceAccountKey.json`.
+  - `DATABASE_URL`: The URL for your Realtime Database (if used) or Firestore config.

@@ -22,3 +22,4 @@ venv.bak/
 # Ignore Draft Docs
 update-integration/
 database/
+serviceAccountKey.json

@@ -13,10 +13,13 @@ import functools
 from flask import Flask, render_template, request, jsonify, Response, session, redirect, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 from dotenv import load_dotenv
-from supabase import create_client, Client
+import firebase_admin
+from firebase_admin import credentials, db, auth
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFProtect, CSRFError
+
+
 
 load_dotenv()
 
@@ -55,13 +58,15 @@ def set_security_headers(response):
     )
     return response
 
-url: str = os.environ.get("SUPABASE_URL", "")
-key: str = os.environ.get("SUPABASE_KEY", "")
+cred = credentials.Certificate(os.environ.get("FIREBASE_CREDENTIALS_PATH"))
+firebase_admin.initialize_app(cred, {
+    'databaseURL': os.environ.get('DATABASE_URL')
+})
 
-# Initialize Supabase client globally only if env vars are present (to prevent immediate crash if empty spot)
-supabase: Client = None
-if url and key:
-    supabase = create_client(url, key)
+# Reference to database
+from firebase_admin import firestore
+fs = firestore.client()
+
 
 # ── Authentication ───────────────────────────────────
 ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME')
@@ -102,97 +107,78 @@ TASK_STATUSES = {1: 'Planning', 2: 'In-Progress', 3: 'Execution', 4: 'Documentat
 # ── Student 
 
 def _read_students():
-    """Return list of student dicts from Supabase."""
-    if not supabase: return []
+    """Return list of student dicts from Firestore."""
     try:
-        result = supabase.table('student_database').select('*').execute()
-    except Exception as e:
-        print(f"[Supabase Error] _read_students failed. Type: {type(e).__name__}, Error: {e}")
-        return []
-    
-    students = []
-    for row in result.data:
-        try:
+        docs = fs.collection('students').stream()
+        students = []
+        for doc in docs:
+            row = doc.to_dict()
+            row['nim_id'] = row.get('nim_id', '')
             row['department_id'] = int(row.get('department_id', 0))
-        except (ValueError, TypeError):
-            row['department_id'] = 0
-        row['department_name'] = DEPARTMENTS.get(row['department_id'], '')
-        try:
+            row['department_name'] = DEPARTMENTS.get(row['department_id'], '')
             row['score'] = float(row.get('score', 0))
-        except (ValueError, TypeError):
-            row['score'] = 0.0
-        if 'password' in row:
-            del row['password']
-        students.append(row)
-    return students
+            row['job_id_list'] = row.get('job_id_list', '')
+            if isinstance(row['job_id_list'], list): row['job_id_list'] = ';'.join(row['job_id_list'])
+            if 'password' in row: del row['password']
+            students.append(row)
+        return students
+    except Exception as e:
+        print(f"[Firestore Error] _read_students failed: {e}")
+        return []
 
 
 def _write_students(students):
-    """Save the entire student list to Supabase via Upsert."""
-    if not supabase: return
-    rows = []
-    for s in students:
-        rows.append({
-            'name_id': s.get('name_id', ''),
-            'email_id': s.get('email_id', ''),
-            'department_id': int(s.get('department_id', 0)),
-            'nim_id': s.get('nim_id', ''),
-            'score': float(s.get('score', 0)),
-            'job_id_list': s.get('job_id_list', '')
-        })
-    # Warning: Supabase upsert requires the primary key (nim_id) to match
+    """Save the entire student list to Firestore."""
     try:
-        supabase.table('student_database').upsert(rows).execute()
+        batch = fs.batch()
+        for s in students:
+            nim = s.get('nim_id')
+            if not nim: continue
+            docs = list(fs.collection('students').where('nim_id', '==', nim).limit(1).stream())
+            doc_ref = docs[0].reference if docs else fs.collection('students').document()
+            batch.set(doc_ref, {
+                'name_id': s.get('name_id', ''),
+                'email_id': s.get('email_id', ''),
+                'department_id': int(s.get('department_id', 0)),
+                'nim_id': nim,
+                'score': float(s.get('score', 0)),
+                'job_id_list': s.get('job_id_list', '').split(';') if isinstance(s.get('job_id_list', ''), str) else s.get('job_id_list', [])
+            }, merge=True)
+        batch.commit()
     except Exception as e:
-        print(f"[Supabase Error] _write_students failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] _write_students failed: {e}")
         raise
 
 
 def _append_student(name_id, email_id, department_id, nim_id):
-    """Add a new student to Supabase."""
-    if not supabase: return None
-    
+    """Add a new student to Firebase Auth and Firestore."""
     import secrets
     random_password = secrets.token_urlsafe(10)
-    
     try:
-        # Create user in Supabase Auth
-        # The database trigger 'on_auth_user_created' in setup.sql will automatically 
-        # create the entry in student_database when this succeeds.
-        supabase.auth.admin.create_user({
-            "email": email_id,
-            "password": random_password,
-            "email_confirm": True,
-            "user_metadata": {
-                "nim_id": nim_id, 
-                "name_id": name_id,
-                "department_id": department_id
-            }
+        user = auth.create_user(email=email_id, password=random_password)
+        fs.collection('students').document(user.uid).set({
+            'name_id': name_id,
+            'email_id': email_id,
+            'department_id': department_id,
+            'nim_id': nim_id,
+            'score': 0.0,
+            'job_id_list': []
         })
         return random_password
     except Exception as e:
-        message = str(e).lower()
-        print(f"[Supabase Error] _append_student failed. Type: {type(e).__name__}, Error: {e}")
-        duplicate_markers = (
-            'already registered',
-            'already exists',
-            'duplicate key',
-            'user already exists',
-        )
-        if any(marker in message for marker in duplicate_markers):
-            print(f"Auth user already exists for {email_id}: {e}")
+        print(f"[Firebase Error] _append_student failed: {e}")
+        if 'email-already-exists' in str(e).lower():
             return None
         raise RuntimeError(f"Failed to create auth user for {email_id}: {e}") from e
 
 
 def _nim_exists(nim_id):
     """Check if a NIM already exists."""
-    if not supabase: return False
     try:
-        result = supabase.table('student_database').select('nim_id').eq('nim_id', nim_id).execute()
-        return len(result.data) > 0
+        docs = fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream()
+        return len(list(docs)) > 0
     except Exception as e:
-        print(f"[Supabase Error] _nim_exists failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] _nim_exists failed: {e}")
         return False
 
 
@@ -220,54 +206,49 @@ def _parse_date(date_str):
 # ── Task Helpers ─────────────────────────────────────
 
 def _read_tasks():
-    """Return list of task dicts from Supabase."""
-    if not supabase: return []
+    """Return list of task dicts from Firestore."""
     try:
-        result = supabase.table('task_data').select('*').execute()
-    except Exception as e:
-        print(f"[Supabase Error] _read_tasks failed. Type: {type(e).__name__}, Error: {e}")
-        return []
-        
-    tasks = []
-    for row in result.data:
-        try:
+        docs = fs.collection('tasks').stream()
+        tasks = []
+        for doc in docs:
+            row = doc.to_dict()
             row['type_id'] = int(row.get('type_id', 0))
-        except (ValueError, TypeError):
-            row['type_id'] = 0
-        try:
             row['status_id'] = int(row.get('status_id', 0))
-        except (ValueError, TypeError):
-            row['status_id'] = 0
-            
-        row['start_date'] = row.get('start_date', '') or ''
-        row['end_date'] = row.get('end_date', '') or ''
-        
-        row['type_name'] = TASK_TYPES.get(row['type_id'], '')
-        row['status_name'] = TASK_STATUSES.get(row['status_id'], '')
-        tasks.append(row)
-    return tasks
+            row['start_date'] = row.get('start_date', '')
+            row['end_date'] = row.get('end_date', '')
+            row['type_name'] = TASK_TYPES.get(row['type_id'], '')
+            row['status_name'] = TASK_STATUSES.get(row['status_id'], '')
+            row['task_id'] = row.get('task_id', doc.id)
+            tasks.append(row)
+        return tasks
+    except Exception as e:
+        print(f"[Firestore Error] _read_tasks failed: {e}")
+        return []
 
 
 def _write_tasks(tasks):
-    """Save the entire task list to Supabase."""
-    if not supabase: return
-    rows = []
-    for t in tasks:
-        rows.append({
-            'task_id': str(t.get('task_id', '')),
-            'task_name': str(t.get('task_name', '')),
-            'type_id': int(t.get('type_id', 0)),
-            'start_date': _parse_date(t.get('start_date', '')),
-            'end_date': _parse_date(t.get('end_date', '')),
-            'status_id': int(t.get('status_id', 0)),
-            'pic': str(t.get('pic', '')),
-            'related_links': str(t.get('related_links', '')),
-            'description': str(t.get('description', '')),
-        })
+    """Save the entire task list to Firestore."""
     try:
-        supabase.table('task_data').upsert(rows).execute()
+        batch = fs.batch()
+        for t in tasks:
+            tid = t.get('task_id')
+            if not tid: continue
+            docs = list(fs.collection('tasks').where('task_id', '==', tid).limit(1).stream())
+            doc_ref = docs[0].reference if docs else fs.collection('tasks').document()
+            batch.set(doc_ref, {
+                'task_id': tid,
+                'task_name': str(t.get('task_name', '')),
+                'type_id': int(t.get('type_id', 0)),
+                'start_date': _parse_date(t.get('start_date', '')),
+                'end_date': _parse_date(t.get('end_date', '')),
+                'status_id': int(t.get('status_id', 0)),
+                'pic': str(t.get('pic', '')),
+                'related_links': str(t.get('related_links', '')),
+                'description': str(t.get('description', ''))
+            }, merge=True)
+        batch.commit()
     except Exception as e:
-        print(f"[Supabase Error] _write_tasks failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] _write_tasks failed: {e}")
         raise
 
 
@@ -292,12 +273,9 @@ def _generate_task_id(type_id):
 
 
 def _append_task(task_id, task_name, type_id, start_date, end_date, status_id, pic, related_links, description):
-    """Add a new task to Supabase."""
-    if not supabase:
-        raise RuntimeError('Supabase client is not initialized')
-
+    """Add a new task to Firestore."""
     try:
-        return supabase.table('task_data').insert({
+        fs.collection('tasks').document().set({
             'task_id': task_id,
             'task_name': task_name,
             'type_id': int(type_id),
@@ -307,9 +285,9 @@ def _append_task(task_id, task_name, type_id, start_date, end_date, status_id, p
             'pic': pic,
             'related_links': related_links,
             'description': description
-        }).execute()
+        })
     except Exception as e:
-        print(f"[Supabase Error] _append_task failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] _append_task failed: {e}")
         raise
 
 
@@ -321,163 +299,131 @@ def _update_tasks(tasks):
 # ── Contributor Helpers ──────────────────────────────
 
 def _read_all_contributors():
-    """Return all contributor rows from Supabase."""
-    if not supabase: return []
+    """Return all contributor rows from Firestore."""
     try:
-        result = supabase.table('task_contributors').select('*').execute()
-    except Exception as e:
-        print(f"[Supabase Error] _read_all_contributors failed. Type: {type(e).__name__}, Error: {e}")
-        return []
-        
-    rows = []
-    for row in result.data:
-        try:
+        docs = fs.collection('contributions').stream()
+        rows = []
+        for doc in docs:
+            row = doc.to_dict()
             row['points'] = float(row.get('points', 0))
-        except (ValueError, TypeError):
-            row['points'] = 0.0
-        rows.append(row)
-    return rows
+            rows.append(row)
+        return rows
+    except Exception as e:
+        print(f"[Firestore Error] _read_all_contributors failed: {e}")
+        return []
 
 
 def _write_all_contributors(rows):
-    """Save all contributor rows to Supabase (destructive clear and insert since no PK present)."""
-    if not supabase: return
-    # This is inefficient in Postgres, but mimics the original list-overwrite approach
-    # We first delete all then reinsert.
+    """Save all contributor rows to Firestore (destructive clear)."""
     try:
-        supabase.table('task_contributors').delete().neq('id', -1).execute()
-        data = []
-        for r in rows:
-            data.append({
-                'task_id': str(r.get('task_id', '')),
-                'nim_id': str(r.get('nim_id', '')),
-                'points': float(r.get('points', 0))
-            })
-        if data:
-            supabase.table('task_contributors').insert(data).execute()
+        # Delete all
+        docs = fs.collection('contributions').stream()
+        batch = fs.batch()
+        for doc in docs: batch.delete(doc.reference)
+        batch.commit()
+        # Insert new
+        for i in range(0, len(rows), 500):
+            batch = fs.batch()
+            for r in rows[i:i+500]:
+                doc_ref = fs.collection('contributions').document()
+                batch.set(doc_ref, {
+                    'task_id': str(r.get('task_id', '')),
+                    'nim_id': str(r.get('nim_id', '')),
+                    'points': float(r.get('points', 0))
+                })
+            batch.commit()
     except Exception as e:
-        print(f"[Supabase Error] _write_all_contributors failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] _write_all_contributors failed: {e}")
         raise
 
 
 def _read_task_contributors(task_id):
-    """Return list of contributor dicts for a given task from Supabase."""
-    if not supabase: return []
+    """Return list of contributor dicts for a given task."""
     try:
-        result = supabase.table('task_contributors').select('*').eq('task_id', task_id).execute()
-        return result.data
+        docs = fs.collection('contributions').where('task_id', '==', task_id).stream()
+        return [doc.to_dict() for doc in docs]
     except Exception as e:
-        print(f"[Supabase Error] _read_task_contributors failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] _read_task_contributors failed: {e}")
         return []
 
 
 def _write_task_contributors(task_id, rows):
     """Rewrite contributors for a specific task."""
-    if not supabase: return
     try:
-        # 1. Delete existing for this task
-        supabase.table('task_contributors').delete().eq('task_id', task_id).execute()
-        # 2. Insert new rows
-        data = []
+        # Delete existing
+        docs = fs.collection('contributions').where('task_id', '==', task_id).stream()
+        batch = fs.batch()
+        for doc in docs: batch.delete(doc.reference)
+        batch.commit()
+        # Insert new
+        batch = fs.batch()
         for r in rows:
-            data.append({
+            doc_ref = fs.collection('contributions').document()
+            batch.set(doc_ref, {
                 'task_id': task_id,
                 'nim_id': r['nim_id'],
                 'points': float(r.get('points', 0))
             })
-        if data:
-            supabase.table('task_contributors').insert(data).execute()
+        batch.commit()
     except Exception as e:
-        print(f"[Supabase Error] _write_task_contributors failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] _write_task_contributors failed: {e}")
         raise
 
 def _sync_student_stats():
-    """Recalculate both 'score' and 'job_id_list' for all students dynamically from task_contributors and task_data."""
-    if not supabase: return
+    """Recalculate both 'score' and 'job_id_list' for all students."""
     try:
-        # 1. Fetch all tasks
-        res_tasks = supabase.table('task_data').select('task_id, status_id').execute()
-        finished_task_ids = {t['task_id'] for t in res_tasks.data if t.get('status_id') == 7}
-        
-        # 2. Fetch all contributors
-        res_contribs = supabase.table('task_contributors').select('task_id, nim_id, points').execute()
-        all_contribs = res_contribs.data
-        
-        # 3. Aggregate per student
+        # Fetch tasks
+        tasks = fs.collection('tasks').stream()
+        finished_task_ids = {t.to_dict().get('task_id') for t in tasks if t.to_dict().get('status_id') == 7}
+        # Fetch contribs
+        contribs = fs.collection('contributions').stream()
         student_stats = {}
-        for c in all_contribs:
-            nim = c.get('nim_id')
-            tid = c.get('task_id')
-            pts = float(c.get('points', 0.0))
-            
+        for c in contribs:
+            data = c.to_dict()
+            nim = data.get('nim_id')
+            tid = data.get('task_id')
+            pts = float(data.get('points', 0.0))
             if not nim: continue
-            
-            if nim not in student_stats:
-                student_stats[nim] = {'score': 0.0, 'job_list': []}
-                
+            if nim not in student_stats: student_stats[nim] = {'score': 0.0, 'job_list': []}
             student_stats[nim]['job_list'].append(tid)
-            if tid in finished_task_ids:
-                student_stats[nim]['score'] += pts
-                
-        # 4. Fetch all students to update
-        res_students = supabase.table('student_database').select('nim_id, score, job_id_list').execute()
-        
-        for s in res_students.data:
-            nim = s['nim_id']
-            curr_score = float(s.get('score', 0.0) or 0.0)
-            curr_jobs = s.get('job_id_list', '') or ''
-            
+            if tid in finished_task_ids: student_stats[nim]['score'] += pts
+        # Update students
+        students = fs.collection('students').stream()
+        batch = fs.batch()
+        for s in students:
+            nim = s.to_dict().get('nim_id')
             stats = student_stats.get(nim, {'score': 0.0, 'job_list': []})
             new_score = float(stats['score'])
             new_jobs = ';'.join(filter(None, stats['job_list']))
-            
-            # Only update if something changed to save API calls
-            if abs(new_score - curr_score) > 0.01 or new_jobs != curr_jobs:
-                supabase.table('student_database').update({
-                    'score': new_score,
-                    'job_id_list': new_jobs
-                }).eq('nim_id', nim).execute()
-                
+            batch.update(s.reference, {'score': new_score, 'job_id_list': new_jobs})
+        batch.commit()
     except Exception as e:
-        print(f"[Supabase Error] _sync_student_stats failed: {e}")
+        print(f"[Firestore Error] _sync_student_stats failed: {e}")
 
 def _update_student_selection(nim_id, selected_task_ids):
-    """Update the student's task list in both student_data and task_contributors."""
-    if not supabase: return False
-    
+    """Update the student's task list in both students and contributions."""
     try:
-        # Fetch student
-        res_student = supabase.table('student_database').select('*').eq('nim_id', nim_id).execute()
-        if not res_student.data:
-            return False
-        student = res_student.data[0]
-
-        old_task_ids = set(student.get('job_id_list', '').split(';')) if student.get('job_id_list') else set()
+        docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
+        if not docs: return False
+        student_ref = docs[0].reference
+        student = docs[0].to_dict()
+        old_task_ids = set(student.get('job_id_list', '').split(';')) if isinstance(student.get('job_id_list'), str) else set(student.get('job_id_list', []))
         old_task_ids = {t for t in old_task_ids if t.strip()}
         new_task_ids = set(selected_task_ids)
-
-        student['job_id_list'] = ';'.join(new_task_ids)
-        
-        # Update student record
-        supabase.table('student_database').update({'job_id_list': student['job_id_list']}).eq('nim_id', nim_id).execute()
-
+        student_ref.update({'job_id_list': ';'.join(new_task_ids)})
         added_tasks = new_task_ids - old_task_ids
         removed_tasks = old_task_ids - new_task_ids
-
         if removed_tasks:
-            # Remove student from unselected tasks
-            supabase.table('task_contributors').delete().eq('nim_id', nim_id).in_('task_id', list(removed_tasks)).execute()
-            
+            for tid in removed_tasks:
+                cdocs = fs.collection('contributions').where('nim_id', '==', nim_id).where('task_id', '==', tid).stream()
+                for c in cdocs: c.reference.delete()
         if added_tasks:
-            # Add student to newly selected tasks
-            new_contribs = [{'task_id': tid, 'nim_id': nim_id, 'points': 0.0} for tid in added_tasks]
-            supabase.table('task_contributors').insert(new_contribs).execute()
-
+            for tid in added_tasks:
+                fs.collection('contributions').document().set({'task_id': tid, 'nim_id': nim_id, 'points': 0.0})
         _sync_student_stats()
-
         return True
     except Exception as e:
-        print(f"[Supabase Error] _update_student_selection failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] _update_student_selection failed: {e}")
         raise
 
 
@@ -759,9 +705,9 @@ def student_auth():
     if not nim_id or not password:
         return jsonify({'error': 'NIM and password are required'}), 400
         
-    if not supabase: return jsonify({'error': 'DB not initialized'}), 500
+    if False: return jsonify({'error': 'DB not initialized'}), 500
     try:
-        res = supabase.table('student_database').select('*').eq('nim_id', nim_id).execute()
+        res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream()]})()
     except Exception as e:
         print(f"[Supabase Error] student_auth failed. Type: {type(e).__name__}, Error: {e}")
         return jsonify({'error': 'Database error'}), 500
@@ -772,8 +718,12 @@ def student_auth():
     email = student.get('email_id')
         
     try:
-        temp_client = create_client(url, key)
-        auth_res = temp_client.auth.sign_in_with_password({"email": email, "password": password})
+        
+        import requests
+        payload = {'email': email, 'password': password, 'returnSecureToken': True}
+        api_key = os.environ.get('FIREBASE_API_KEY')
+        r = requests.post(f'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}', json=payload)
+        if r.status_code != 200: raise Exception('Invalid password')
     except Exception as e:
         return jsonify({'error': 'Incorrect password or authentication failed'}), 401
         
@@ -803,9 +753,9 @@ def change_password():
     if not nim_id or not old_password or not new_password:
         return jsonify({'error': 'All fields are required'}), 400
         
-    if not supabase: return jsonify({'error': 'DB not initialized'}), 500
+    if False: return jsonify({'error': 'DB not initialized'}), 500
     try:
-        res = supabase.table('student_database').select('*').eq('nim_id', nim_id).execute()
+        res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream()]})()
     except Exception as e:
         print(f"[Supabase Error] change_password lookup failed. Type: {type(e).__name__}, Error: {e}")
         return jsonify({'error': 'Database error'}), 500
@@ -817,11 +767,15 @@ def change_password():
     email = student.get('email_id')
     
     try:
-        temp_client = create_client(url, key)
-        auth_res = temp_client.auth.sign_in_with_password({"email": email, "password": old_password})
-        if not auth_res or not getattr(auth_res, 'session', None) or not auth_res.session.access_token:
+        
+        import requests
+        payload = {'email': email, 'password': old_password, 'returnSecureToken': True}
+        api_key = os.environ.get('FIREBASE_API_KEY')
+        r = requests.post(f'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}', json=payload)
+        if r.status_code != 200: raise Exception('Invalid password')
+        if False:
             return jsonify({'error': 'Failed to establish an authenticated session'}), 401
-        temp_client.auth.update_user({'password': new_password})
+        auth.update_user(user.uid, password=new_password)
     except Exception as e:
         return jsonify({'error': f'Incorrect current password or update failed: {e}'}), 401
     
@@ -928,7 +882,7 @@ def update_task(task_id):
     if not data:
         return jsonify({'error': 'Invalid request body'}), 400
 
-    if not supabase:
+    if False:
         return jsonify({'error': 'Supabase client is not initialized'}), 500
 
     tasks = _read_tasks()
@@ -1005,11 +959,11 @@ def update_task(task_id):
 @login_required
 def delete_task(task_id):
     """Delete a task and sync student stats."""
-    if not supabase: return jsonify({'error': 'DB not initialized'}), 500
+    if False: return jsonify({'error': 'DB not initialized'}), 500
 
     # Check if task exists
     try:
-        task_res = supabase.table('task_data').select('*').eq('task_id', task_id).execute()
+        task_res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('tasks').where('task_id', '==', task_id).limit(1).stream()]})()
         if not task_res.data:
             return jsonify({'error': 'Task not found'}), 404
     except Exception as e:
@@ -1018,8 +972,8 @@ def delete_task(task_id):
 
     # Delete the task
     try:
-        supabase.table('task_contributors').delete().eq('task_id', task_id).execute()
-        supabase.table('task_data').delete().eq('task_id', task_id).execute()
+        [doc.reference.delete() for doc in fs.collection('contributions').where('task_id', '==', task_id).stream()]
+        [doc.reference.delete() for doc in fs.collection('tasks').where('task_id', '==', task_id).stream()]
         
         # Sync scores and job lists
         _sync_student_stats()
@@ -1141,20 +1095,20 @@ def export_sheets():
 @login_required
 def get_student(nim_id):
     """Return a single student with their task contributions."""
-    if not supabase:
+    if False:
         return jsonify({'error': 'DB not initialized'}), 500
     try:
-        res = supabase.table('student_database').select('*').eq('nim_id', nim_id).execute()
+        res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream()]})()
         if not res.data:
             return jsonify({'error': 'Student not found'}), 404
         student = res.data[0]
         student.pop('password', None)
 
-        contribs_res = supabase.table('task_contributors').select('task_id, points, contribution_detail').eq('nim_id', nim_id).execute()
+        contribs_res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('contributions').where('nim_id', '==', nim_id).stream()]})()
         task_ids = [c['task_id'] for c in contribs_res.data]
         tasks_map = {}
         if task_ids:
-            tasks_res = supabase.table('task_data').select('task_id, task_name, status_id, type_id').in_('task_id', task_ids).execute()
+            tasks_res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('tasks').where('task_id', 'in', task_ids).stream()]})() if task_ids else type('obj', (object,), {'data': []})()
             tasks_map = {t['task_id']: t for t in tasks_res.data}
 
         contributions = []
@@ -1179,7 +1133,7 @@ def get_student(nim_id):
 @login_required
 def update_student(nim_id):
     """Update a single student's editable fields."""
-    if not supabase:
+    if False:
         return jsonify({'error': 'DB not initialized'}), 500
     data = request.get_json()
     if not data:
@@ -1191,7 +1145,7 @@ def update_student(nim_id):
             update['department_id'] = int(update['department_id'])
         if 'score' in update:
             update['score'] = float(update['score'])
-        supabase.table('student_database').update(update).eq('nim_id', nim_id).execute()
+        [doc.reference.update(update) for doc in fs.collection('students').where('nim_id', '==', nim_id).stream()]
         return jsonify({'message': 'Student updated'}), 200
     except Exception as e:
         print(f"[Supabase Error] update_student failed: {e}")
@@ -1202,20 +1156,20 @@ def update_student(nim_id):
 @login_required
 def delete_student(nim_id):
     """Permanently delete a student from both Supabase Auth and the database."""
-    if not supabase:
+    if False:
         return jsonify({'error': 'DB not initialized'}), 500
     try:
-        res = supabase.table('student_database').select('user_id').eq('nim_id', nim_id).execute()
+        res = type('obj', (object,), {'data': [{'user_id': doc.id} for doc in fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream()]})()
         if not res.data:
             return jsonify({'error': 'Student not found'}), 404
         user_id = res.data[0].get('user_id')
 
-        supabase.table('task_contributors').delete().eq('nim_id', nim_id).execute()
-        supabase.table('student_database').delete().eq('nim_id', nim_id).execute()
+        [doc.reference.delete() for doc in fs.collection('contributions').where('nim_id', '==', nim_id).stream()]
+        [doc.reference.delete() for doc in fs.collection('students').where('nim_id', '==', nim_id).stream()]
 
         if user_id:
             try:
-                supabase.auth.admin.delete_user(user_id)
+                auth.delete_user(user_id)
             except Exception as auth_e:
                 print(f"[Auth] Could not delete auth user {user_id}: {auth_e}")
 
@@ -1230,18 +1184,18 @@ def delete_student(nim_id):
 @login_required
 def reset_student_password(nim_id):
     """Generate and set a new random password for a student."""
-    if not supabase:
+    if False:
         return jsonify({'error': 'DB not initialized'}), 500
     try:
         import secrets
-        res = supabase.table('student_database').select('user_id').eq('nim_id', nim_id).execute()
+        res = type('obj', (object,), {'data': [{'user_id': doc.id} for doc in fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream()]})()
         if not res.data:
             return jsonify({'error': 'Student not found'}), 404
         user_id = res.data[0].get('user_id')
         if not user_id:
             return jsonify({'error': 'Student has no linked auth account'}), 400
         new_password = secrets.token_urlsafe(12)
-        supabase.auth.admin.update_user_by_id(user_id, {'password': new_password})
+        auth.update_user(user_id, password=new_password)
         return jsonify({'message': 'Password reset successfully', 'new_password': new_password}), 200
     except Exception as e:
         print(f"[Supabase Error] reset_student_password failed: {e}")
