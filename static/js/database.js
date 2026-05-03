@@ -384,28 +384,72 @@ document.getElementById('cancelImport').addEventListener('click', () => { docume
 
 document.getElementById('confirmImport').addEventListener('click', async () => {
     const rows = JSON.parse(document.getElementById('importModal').dataset.rows || '[]');
-    document.getElementById('importModal').style.display = 'none';
+    if (rows.length === 0) return;
+
     const btn = document.getElementById('confirmImport');
+    const cancelBtn = document.getElementById('cancelImport');
+    const progressContainer = document.getElementById('importProgressContainer');
+    const progressBar = document.getElementById('importProgressBar');
+    const progressStatus = document.getElementById('importProgressStatus');
+    const hintText = document.getElementById('importHintText');
+
     btn.disabled = true;
-    showToast(`Importing ${rows.length} students…`, 'success');
-    let added = 0, failed = 0;
-    for (const row of rows) {
-        const payload = {
-            name_id: row.name_id || '',
-            email_id: row.email_id || '',
-            department_id: parseInt(row.department_id) || 1,
-            nim_id: row.nim_id || '',
-        };
+    cancelBtn.style.display = 'none';
+    progressContainer.style.display = 'block';
+    hintText.style.display = 'none';
+
+    let added = 0, updated = 0, failed = 0;
+    const chunkSize = 10;
+    const total = rows.length;
+
+    for (let i = 0; i < total; i += chunkSize) {
+        const chunk = rows.slice(i, i + chunkSize);
+        const progress = Math.round((i / total) * 100);
+        
+        progressBar.style.width = `${progress}%`;
+        progressStatus.textContent = `Processing... ${progress}% (${i}/${total})`;
+
         try {
-            const res = await apiFetch('/api/register', { method: 'POST', body: JSON.stringify(payload) });
+            const res = await apiFetch('/api/students/bulk-import', { 
+                method: 'POST', 
+                body: JSON.stringify({ students: chunk }) 
+            });
             const data = await res.json();
-            if (res.ok) { students.push(data.student); added++; }
-            else failed++;
-        } catch { failed++; }
+            
+            if (res.ok) {
+                added += data.results.added;
+                updated += data.results.updated;
+                failed += data.results.failed;
+                
+                // Add new/updated students to the local array
+                data.students.forEach(newS => {
+                    const idx = students.findIndex(s => s.nim_id === newS.nim_id);
+                    if (idx > -1) students[idx] = newS;
+                    else students.push(newS);
+                });
+            } else {
+                failed += chunk.length;
+            }
+        } catch (err) {
+            console.error("Chunk import error:", err);
+            failed += chunk.length;
+        }
     }
-    renderTable(document.getElementById('searchInput').value);
-    showToast(`Import done: ${added} added${failed > 0 ? `, ${failed} failed` : ''}.`, failed > 0 ? 'error' : 'success');
-    btn.disabled = false;
+
+    progressBar.style.width = '100%';
+    progressStatus.textContent = `Complete! 100% (${total}/${total})`;
+    
+    setTimeout(() => {
+        document.getElementById('importModal').style.display = 'none';
+        // Reset UI for next time
+        cancelBtn.style.display = 'inline-flex';
+        progressContainer.style.display = 'none';
+        hintText.style.display = 'block';
+        btn.disabled = false;
+        
+        renderTable(document.getElementById('searchInput').value);
+        showToast(`Import done: ${added} added, ${updated} updated, ${failed} failed.`, failed > 0 ? 'warning' : 'success');
+    }, 1000);
 });
 
 /* ── Export ──────────────────────────────────────── */

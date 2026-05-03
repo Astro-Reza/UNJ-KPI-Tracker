@@ -760,6 +760,71 @@ def register_student():
     }), 201
 
 
+@app.route('/api/students/bulk-import', methods=['POST'])
+@login_required
+def bulk_import_students():
+    """Bulk upsert students. Expects JSON object with 'students' array."""
+    data = request.get_json()
+    if not data or 'students' not in data:
+        return jsonify({'error': 'Invalid request body'}), 400
+    
+    results = {'added': 0, 'updated': 0, 'failed': 0, 'errors': []}
+    processed_students = []
+
+    for s in data['students']:
+        name_id = str(s.get('name_id') or '').strip()
+        email_id = str(s.get('email_id') or '').strip()
+        department_id = int(s.get('department_id') or 1)
+        nim_id = str(s.get('nim_id') or '').strip()
+
+        if not nim_id or not name_id:
+            results['failed'] += 1
+            continue
+
+        try:
+            docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
+            if docs:
+                # Update
+                doc_ref = docs[0].reference
+                uid = doc_ref.id
+                doc_ref.update({
+                    'name_id': name_id,
+                    'email_id': email_id,
+                    'department_id': department_id
+                })
+                try:
+                    auth.update_user(uid, email=email_id)
+                except: pass
+                results['updated'] += 1
+                
+                # Fetch full data to return to frontend
+                updated_data = doc_ref.get().to_dict()
+                updated_data['department_name'] = DEPARTMENTS.get(department_id, '')
+                if 'password' in updated_data: del updated_data['password']
+                processed_students.append(updated_data)
+            else:
+                # Create
+                _append_student(name_id, email_id, department_id, nim_id)
+                results['added'] += 1
+                new_student = {
+                    'name_id': name_id, 'email_id': email_id, 
+                    'department_id': department_id, 'nim_id': nim_id,
+                    'department_name': DEPARTMENTS.get(department_id, ''),
+                    'score': 0, 'job_id_list': ''
+                }
+                processed_students.append(new_student)
+        except Exception as e:
+            print(f"[Bulk Import Error] NIM {nim_id}: {e}")
+            results['failed'] += 1
+            results['errors'].append(f"{nim_id}: {str(e)}")
+
+    return jsonify({
+        'message': f"Processed {len(data['students'])} students.",
+        'results': results,
+        'students': processed_students
+    }), 200
+
+
 @app.route('/api/students/save-all', methods=['POST'])
 @login_required
 def save_all_students():

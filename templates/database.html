@@ -350,7 +350,15 @@
             <div class="import-preview-count" id="importPreviewCount"></div>
             <div id="importSample"></div>
         </div>
-        <p class="import-hint" style="color:#d97706;font-weight:600">Each student gets a random initial password shown after import completes.</p>
+        
+        <div id="importProgressContainer" style="display:none; margin-top:16px;">
+            <div style="height:8px; width:100%; background:#e2e8f0; border-radius:4px; overflow:hidden; margin-bottom:8px;">
+                <div id="importProgressBar" style="height:100%; width:0%; background:#00919A; transition:width 0.3s ease;"></div>
+            </div>
+            <div id="importProgressStatus" style="font-size:12px; color:#64748b; font-weight:600;">Processing... 0%</div>
+        </div>
+
+        <p class="import-hint" id="importHintText" style="color:#d97706;font-weight:600;margin-top:16px;">Each student gets a random initial password shown after import completes.</p>
         <div class="modal-footer">
             <button type="button" class="btn btn-outline" id="cancelImport">Cancel</button>
             <button type="button" class="btn btn-primary" id="confirmImport">Import All</button>
