@@ -321,13 +321,13 @@ document.getElementById('btnDeleteSelected').addEventListener('click', async () 
 
 /* ── Reset Password ──────────────────────────────── */
 async function resetPassword(nimId, name) {
-    if (!confirm(`Reset password for "${name}"?\n\nA new random password will be generated.`)) return;
+    if (!confirm(`Send password reset email to "${name}"?\n\nThey will receive an email with a link to choose a new password.`)) return;
     try {
         const res = await apiFetch(`/api/students/${encodeURIComponent(nimId)}/reset-password`, { method: 'POST' });
         const data = await res.json();
         if (!res.ok) { showToast(data.error || 'Reset failed', 'error'); return; }
-        alert(`Password reset for ${name}.\n\nNew password: ${data.new_password}\n\nShare this with the student securely.`);
-        showToast('Password reset!');
+        alert(`Password reset email sent to ${name}.`);
+        showToast('Email sent!');
     } catch { showToast('Network error', 'error'); }
 }
 

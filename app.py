@@ -232,6 +232,21 @@ def _append_student(name_id, email_id, department_id, nim_id):
             'score': 0.0,
             'job_id_list': []
         })
+        
+        # Trigger Firebase email verification
+        try:
+            import httpx
+            api_key = os.environ.get('FIREBASE_API_KEY')
+            if api_key:
+                login_url = f'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}'
+                login_res = httpx.post(login_url, json={'email': email_id, 'password': nim_id, 'returnSecureToken': True})
+                if login_res.status_code == 200:
+                    id_token = login_res.json().get('idToken')
+                    verify_url = f'https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={api_key}'
+                    httpx.post(verify_url, json={'requestType': 'VERIFY_EMAIL', 'idToken': id_token})
+        except Exception as email_err:
+            print(f"[Firebase Email Error] Failed to send verification email for {email_id}: {email_err}")
+
         return nim_id
     except Exception as e:
         print(f"[Firebase Error] _append_student failed: {e}")
@@ -1331,18 +1346,31 @@ def delete_student(nim_id):
 @app.route('/api/students/<nim_id>/reset-password', methods=['POST'])
 @login_required
 def reset_student_password(nim_id):
-    """Generate and set a new random password for a student."""
+    """Send a Firebase password reset email to the student."""
     try:
-        import secrets
         docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
         if not docs:
             return jsonify({'error': 'Student not found'}), 404
-        user_id = docs[0].id
-        if not user_id:
-            return jsonify({'error': 'Student has no linked auth account'}), 400
-        new_password = secrets.token_urlsafe(12)
-        auth.update_user(user_id, password=new_password)
-        return jsonify({'message': 'Password reset successfully', 'new_password': new_password}), 200
+        
+        student_data = docs[0].to_dict()
+        email_id = student_data.get('email_id')
+        if not email_id:
+            return jsonify({'error': 'Student has no email address'}), 400
+
+        import httpx
+        api_key = os.environ.get('FIREBASE_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'FIREBASE_API_KEY not configured'}), 500
+            
+        url = f'https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={api_key}'
+        res = httpx.post(url, json={'requestType': 'PASSWORD_RESET', 'email': email_id})
+        
+        if res.status_code == 200:
+            return jsonify({'message': 'Password reset email sent successfully'}), 200
+        else:
+            error_msg = res.json().get('error', {}).get('message', 'Unknown error')
+            return jsonify({'error': f'Failed to send email: {error_msg}'}), 500
+            
     except Exception as e:
         print(f"[Firestore Error] reset_student_password failed: {e}")
         return jsonify({'error': str(e)}), 500
