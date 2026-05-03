@@ -105,10 +105,15 @@ form.addEventListener('submit', async function (e) {
 
     if (!valid) return;
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
     try {
         const res = await fetch('/api/register', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
             body: JSON.stringify({
                 name_id: name,
                 email_id: email,
@@ -163,10 +168,15 @@ loginForm.addEventListener('submit', async function (e) {
 
     if (!valid) return;
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
     try {
         const res = await fetch('/api/student/auth', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
             body: JSON.stringify({ nim_id: nim, password: password })
         });
 
@@ -236,10 +246,15 @@ btnSaveTasks.addEventListener('click', async () => {
     btnSaveTasks.disabled = true;
     btnSaveTasks.textContent = 'Saving...';
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
     try {
         const res = await fetch('/api/student/tasks', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
             body: JSON.stringify({
                 nim_id: currentStudentId,
                 task_ids: selectedTaskIds
@@ -320,10 +335,15 @@ changePasswordForm.addEventListener('submit', async function(e) {
     btnSubmit.disabled = true;
     btnSubmit.textContent = 'Updating...';
 
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
     try {
         const res = await fetch('/api/student/change_password', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
             body: JSON.stringify({
                 nim_id: currentStudentId,
                 old_password: oldPwd,

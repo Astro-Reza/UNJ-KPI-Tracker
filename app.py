@@ -58,7 +58,20 @@ def set_security_headers(response):
     )
     return response
 
-cred = credentials.Certificate(os.environ.get("FIREBASE_CREDENTIALS_PATH"))
+# Firebase Initialization
+service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+if service_account_json:
+    try:
+        import json
+        service_account_info = json.loads(service_account_json)
+        cred = credentials.Certificate(service_account_info)
+    except Exception as e:
+        # Fallback to path if JSON parsing fails
+        cred = credentials.Certificate(service_account_json)
+else:
+    cred_path = os.environ.get("FIREBASE_CREDENTIALS_PATH", "./serviceAccountKey.json")
+    cred = credentials.Certificate(cred_path)
+
 firebase_admin.initialize_app(cred, {
     'databaseURL': os.environ.get('DATABASE_URL')
 })
@@ -152,10 +165,9 @@ def _write_students(students):
 
 def _append_student(name_id, email_id, department_id, nim_id):
     """Add a new student to Firebase Auth and Firestore."""
-    import secrets
-    random_password = secrets.token_urlsafe(10)
     try:
-        user = auth.create_user(email=email_id, password=random_password)
+        # Use NIM as the default password to match frontend expectations
+        user = auth.create_user(email=email_id, password=nim_id)
         fs.collection('students').document(user.uid).set({
             'name_id': name_id,
             'email_id': email_id,
@@ -164,7 +176,7 @@ def _append_student(name_id, email_id, department_id, nim_id):
             'score': 0.0,
             'job_id_list': []
         })
-        return random_password
+        return nim_id
     except Exception as e:
         print(f"[Firebase Error] _append_student failed: {e}")
         if 'email-already-exists' in str(e).lower():
@@ -567,7 +579,7 @@ def database_page():
     students_json = json.dumps(students, default=str)
     return render_template('database.html',
                            students=students,
-                           students_json=json.dumps(students),
+                           students_json=students_json,
                            dept_counts=dept_counts,
                            avg_score=avg_score,
                            top_score=top_score)
@@ -583,7 +595,7 @@ def task_database_page():
     
     return render_template('task_database.html',
                            tasks=tasks,
-                           tasks_json=json.dumps(tasks),
+                           tasks_json=json.dumps(tasks, default=str),
                            status_counts=status_counts)
 
 
@@ -658,12 +670,12 @@ def register_student():
 
     department_id = int(department_id)
     try:
-        random_pwd = _append_student(name_id, email_id, department_id, nim_id)
+        pwd = _append_student(name_id, email_id, department_id, nim_id)
     except RuntimeError as e:
         return jsonify({'error': str(e)}), 500
 
     return jsonify({
-        'message': f'{name_id} registered successfully! Temporary password: {random_pwd}',
+        'message': f'{name_id} registered successfully!',
         'student': {
             'name_id': name_id,
             'email_id': email_id,
@@ -686,7 +698,7 @@ def save_all_students():
     try:
         _write_students(data['students'])
     except Exception as exc:
-        print(f"[Supabase Error] _write_students in save_all_students failed. Type: {type(exc).__name__}, Error: {exc}")
+        print(f"[Firestore Error] _write_students in save_all_students failed. Type: {type(exc).__name__}, Error: {exc}")
         return jsonify({'error': str(exc)}), 500
     return jsonify({'message': f'Saved {len(data["students"])} students'}), 200
 
@@ -705,33 +717,42 @@ def student_auth():
     if not nim_id or not password:
         return jsonify({'error': 'NIM and password are required'}), 400
         
-    if False: return jsonify({'error': 'DB not initialized'}), 500
     try:
-        res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream()]})()
+        docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
     except Exception as e:
-        print(f"[Supabase Error] student_auth failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] student_auth failed. Type: {type(e).__name__}, Error: {e}")
         return jsonify({'error': 'Database error'}), 500
         
-    if not res.data:
+    if not docs:
         return jsonify({'error': 'Student not found'}), 404
-    student = res.data[0]
+    student = docs[0].to_dict()
     email = student.get('email_id')
         
     try:
-        
-        import requests
+        import httpx
         payload = {'email': email, 'password': password, 'returnSecureToken': True}
         api_key = os.environ.get('FIREBASE_API_KEY')
-        r = requests.post(f'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}', json=payload)
-        if r.status_code != 200: raise Exception('Invalid password')
+        url = f'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}'
+        
+        r = httpx.post(url, json=payload)
+        
+        if r.status_code != 200:
+            error_data = r.json()
+            error_message = error_data.get('error', {}).get('message', 'Unknown Firebase Auth error')
+            return jsonify({'error': f"Authentication failed: {error_message}"}), 401
+            
     except Exception as e:
-        return jsonify({'error': 'Incorrect password or authentication failed'}), 401
+        return jsonify({'error': f"Internal server error during auth: {str(e)}"}), 500
         
     tasks = _read_tasks()
     available_tasks = [t for t in tasks if t['status_id'] in (1, 2, 3)]
     
     student_profile = {k: v for k, v in student.items() if k != 'password'}
-    
+    if isinstance(student_profile.get('job_id_list'), list):
+        student_profile['job_id_list'] = ';'.join(student_profile['job_id_list'])
+    elif not student_profile.get('job_id_list'):
+        student_profile['job_id_list'] = ''
+        
     return jsonify({
         'student': student_profile,
         'tasks': available_tasks
@@ -753,17 +774,16 @@ def change_password():
     if not nim_id or not old_password or not new_password:
         return jsonify({'error': 'All fields are required'}), 400
         
-    if False: return jsonify({'error': 'DB not initialized'}), 500
     try:
-        res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream()]})()
+        docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
     except Exception as e:
-        print(f"[Supabase Error] change_password lookup failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] change_password lookup failed. Type: {type(e).__name__}, Error: {e}")
         return jsonify({'error': 'Database error'}), 500
         
-    if not res.data:
+    if not docs:
         return jsonify({'error': 'Student not found'}), 404
         
-    student = res.data[0]
+    student = docs[0].to_dict()
     email = student.get('email_id')
     
     try:
@@ -853,8 +873,8 @@ def create_task():
     try:
         _append_task(task_id, task_name, type_id, start_date, end_date, status_id, pic, related_links, description)
     except Exception as exc:
-        print(f"[Supabase Error] _append_task in create_task failed. Type: {type(exc).__name__}, Error: {exc}")
-        return jsonify({'error': f'Failed to save task to Supabase: {exc}'}), 500
+        print(f"[Firestore Error] _append_task in create_task failed. Type: {type(exc).__name__}, Error: {exc}")
+        return jsonify({'error': f'Failed to save task to Firestore: {exc}'}), 500
 
     return jsonify({
         'message': 'Task created successfully!',
@@ -881,15 +901,6 @@ def update_task(task_id):
     data = request.get_json()
     if not data:
         return jsonify({'error': 'Invalid request body'}), 400
-
-    if False:
-        return jsonify({'error': 'Supabase client is not initialized'}), 500
-
-    tasks = _read_tasks()
-    task_idx = next((i for i, t in enumerate(tasks) if t['task_id'] == task_id), None)
-    
-    if task_idx is None:
-        return jsonify({'error': 'Task not found'}), 404
 
     task_name = (data.get('task_name') or '').strip()
     type_id = data.get('type_id')
@@ -919,7 +930,11 @@ def update_task(task_id):
     status_id = int(status_id)
 
     try:
-        supabase.table('task_data').update({
+        docs = list(fs.collection('tasks').where('task_id', '==', task_id).limit(1).stream())
+        if not docs:
+            return jsonify({'error': 'Task not found'}), 404
+            
+        docs[0].reference.update({
             'task_name': task_name,
             'type_id': type_id,
             'start_date': _parse_date(start_date),
@@ -928,14 +943,14 @@ def update_task(task_id):
             'pic': pic,
             'related_links': related_links,
             'description': description
-        }).eq('task_id', task_id).execute()
+        })
         
         # Sync scores if status changed
         _sync_student_stats()
         
     except Exception as exc:
-        print(f"[Supabase Error] update_task failed. Type: {type(exc).__name__}, Error: {exc}")
-        return jsonify({'error': f'Failed to update task in Supabase: {exc}'}), 500
+        print(f"[Firestore Error] update_task failed. Type: {type(exc).__name__}, Error: {exc}")
+        return jsonify({'error': f'Failed to update task in Firestore: {exc}'}), 500
 
     return jsonify({
         'message': 'Task updated successfully!',
@@ -959,15 +974,13 @@ def update_task(task_id):
 @login_required
 def delete_task(task_id):
     """Delete a task and sync student stats."""
-    if False: return jsonify({'error': 'DB not initialized'}), 500
-
     # Check if task exists
     try:
-        task_res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('tasks').where('task_id', '==', task_id).limit(1).stream()]})()
-        if not task_res.data:
+        docs = list(fs.collection('tasks').where('task_id', '==', task_id).limit(1).stream())
+        if not docs:
             return jsonify({'error': 'Task not found'}), 404
     except Exception as e:
-        print(f"[Supabase Error] Task lookup in delete failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] Task lookup in delete failed. Type: {type(e).__name__}, Error: {e}")
         return jsonify({'error': 'Database error'}), 500
 
     # Delete the task
@@ -979,7 +992,7 @@ def delete_task(task_id):
         _sync_student_stats()
         
     except Exception as e:
-        print(f"[Supabase Error] Task deletion failed. Type: {type(e).__name__}, Error: {e}")
+        print(f"[Firestore Error] Task deletion failed. Type: {type(e).__name__}, Error: {e}")
         return jsonify({'error': 'Database error during deletion'}), 500
     
     return jsonify({'message': 'Task deleted successfully!'}), 200
@@ -1095,24 +1108,26 @@ def export_sheets():
 @login_required
 def get_student(nim_id):
     """Return a single student with their task contributions."""
-    if False:
-        return jsonify({'error': 'DB not initialized'}), 500
     try:
-        res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream()]})()
-        if not res.data:
+        docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
+        if not docs:
             return jsonify({'error': 'Student not found'}), 404
-        student = res.data[0]
+        student = docs[0].to_dict()
         student.pop('password', None)
+        if isinstance(student.get('job_id_list'), list):
+            student['job_id_list'] = ';'.join(student['job_id_list'])
+        elif not student.get('job_id_list'):
+            student['job_id_list'] = ''
 
-        contribs_res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('contributions').where('nim_id', '==', nim_id).stream()]})()
-        task_ids = [c['task_id'] for c in contribs_res.data]
+        contribs = [doc.to_dict() for doc in fs.collection('contributions').where('nim_id', '==', nim_id).stream()]
+        task_ids = [c['task_id'] for c in contribs]
         tasks_map = {}
         if task_ids:
-            tasks_res = type('obj', (object,), {'data': [doc.to_dict() for doc in fs.collection('tasks').where('task_id', 'in', task_ids).stream()]})() if task_ids else type('obj', (object,), {'data': []})()
-            tasks_map = {t['task_id']: t for t in tasks_res.data}
+            tasks_docs = [doc.to_dict() for doc in fs.collection('tasks').where('task_id', 'in', task_ids).stream()]
+            tasks_map = {t['task_id']: t for t in tasks_docs}
 
         contributions = []
-        for c in contribs_res.data:
+        for c in contribs:
             t = tasks_map.get(c['task_id'], {})
             contributions.append({
                 'task_id': c['task_id'],
@@ -1125,7 +1140,7 @@ def get_student(nim_id):
 
         return jsonify({'student': student, 'contributions': contributions}), 200
     except Exception as e:
-        print(f"[Supabase Error] get_student failed: {e}")
+        print(f"[Firestore Error] get_student failed: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1133,8 +1148,6 @@ def get_student(nim_id):
 @login_required
 def update_student(nim_id):
     """Update a single student's editable fields."""
-    if False:
-        return jsonify({'error': 'DB not initialized'}), 500
     data = request.get_json()
     if not data:
         return jsonify({'error': 'Invalid request body'}), 400
@@ -1148,7 +1161,7 @@ def update_student(nim_id):
         [doc.reference.update(update) for doc in fs.collection('students').where('nim_id', '==', nim_id).stream()]
         return jsonify({'message': 'Student updated'}), 200
     except Exception as e:
-        print(f"[Supabase Error] update_student failed: {e}")
+        print(f"[Firestore Error] update_student failed: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1156,13 +1169,11 @@ def update_student(nim_id):
 @login_required
 def delete_student(nim_id):
     """Permanently delete a student from both Supabase Auth and the database."""
-    if False:
-        return jsonify({'error': 'DB not initialized'}), 500
     try:
-        res = type('obj', (object,), {'data': [{'user_id': doc.id} for doc in fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream()]})()
-        if not res.data:
+        docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
+        if not docs:
             return jsonify({'error': 'Student not found'}), 404
-        user_id = res.data[0].get('user_id')
+        user_id = docs[0].id
 
         [doc.reference.delete() for doc in fs.collection('contributions').where('nim_id', '==', nim_id).stream()]
         [doc.reference.delete() for doc in fs.collection('students').where('nim_id', '==', nim_id).stream()]
@@ -1176,7 +1187,7 @@ def delete_student(nim_id):
         _sync_student_stats()
         return jsonify({'message': f'Student {nim_id} deleted successfully'}), 200
     except Exception as e:
-        print(f"[Supabase Error] delete_student failed: {e}")
+        print(f"[Firestore Error] delete_student failed: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -1184,21 +1195,19 @@ def delete_student(nim_id):
 @login_required
 def reset_student_password(nim_id):
     """Generate and set a new random password for a student."""
-    if False:
-        return jsonify({'error': 'DB not initialized'}), 500
     try:
         import secrets
-        res = type('obj', (object,), {'data': [{'user_id': doc.id} for doc in fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream()]})()
-        if not res.data:
+        docs = list(fs.collection('students').where('nim_id', '==', nim_id).limit(1).stream())
+        if not docs:
             return jsonify({'error': 'Student not found'}), 404
-        user_id = res.data[0].get('user_id')
+        user_id = docs[0].id
         if not user_id:
             return jsonify({'error': 'Student has no linked auth account'}), 400
         new_password = secrets.token_urlsafe(12)
         auth.update_user(user_id, password=new_password)
         return jsonify({'message': 'Password reset successfully', 'new_password': new_password}), 200
     except Exception as e:
-        print(f"[Supabase Error] reset_student_password failed: {e}")
+        print(f"[Firestore Error] reset_student_password failed: {e}")
         return jsonify({'error': str(e)}), 500
 
 
