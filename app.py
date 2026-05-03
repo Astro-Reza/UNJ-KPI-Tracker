@@ -35,7 +35,14 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
 )
 
-limiter = Limiter(get_remote_address, app=app, storage_uri="memory://")
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    storage_uri="memory://",
+    # On Vercel (serverless), rate limiting state is per-instance and resets on cold start.
+    # This is acceptable for basic abuse prevention.
+    enabled=True
+)
 csrf = CSRFProtect(app)
 
 @app.errorhandler(CSRFError)
@@ -59,22 +66,34 @@ def set_security_headers(response):
     return response
 
 # Firebase Initialization
-service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
-if service_account_json:
-    try:
-        import json
-        service_account_info = json.loads(service_account_json)
-        cred = credentials.Certificate(service_account_info)
-    except Exception as e:
-        # Fallback to path if JSON parsing fails
-        cred = credentials.Certificate(service_account_json)
-else:
-    cred_path = os.environ.get("FIREBASE_CREDENTIALS_PATH", "./serviceAccountKey.json")
-    cred = credentials.Certificate(cred_path)
+try:
+    service_account_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+    if service_account_json:
+        # Strip surrounding quotes that some .env parsers may add
+        service_account_json = service_account_json.strip().strip("'\"")
+        try:
+            service_account_info = json.loads(service_account_json)
+            cred = credentials.Certificate(service_account_info)
+        except json.JSONDecodeError as je:
+            print(f"[Startup Error] Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON: {je}")
+            print(f"[Startup Error] First 100 chars: {service_account_json[:100]}")
+            raise RuntimeError(f"FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON: {je}") from je
+    else:
+        cred_path = os.environ.get("FIREBASE_CREDENTIALS_PATH", "./serviceAccountKey.json")
+        if not os.path.exists(cred_path):
+            raise RuntimeError(
+                f"Neither FIREBASE_SERVICE_ACCOUNT_JSON env var nor service account file at '{cred_path}' were found. "
+                "Please set FIREBASE_SERVICE_ACCOUNT_JSON in your environment variables."
+            )
+        cred = credentials.Certificate(cred_path)
 
-firebase_admin.initialize_app(cred, {
-    'databaseURL': os.environ.get('DATABASE_URL')
-})
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': os.environ.get('DATABASE_URL')
+    })
+    print("[Startup] Firebase Admin SDK initialized successfully.")
+except Exception as _firebase_init_error:
+    print(f"[Startup FATAL] Firebase initialization failed: {_firebase_init_error}")
+    raise
 
 # Reference to database
 from firebase_admin import firestore
@@ -117,7 +136,32 @@ TASK_TYPES = {1: 'Publication', 2: 'Event', 3: 'Camp'}
 TASK_STATUSES = {1: 'Planning', 2: 'In-Progress', 3: 'Execution', 4: 'Documentation', 5: 'Lecturer Review', 6: 'Done', 7: 'Finished'}
 
 
-# ── Student 
+# ── Health & Debug Routes ─────────────────────────────
+
+@app.route('/api/health')
+def health_check():
+    """Quick health check — confirms the app started successfully."""
+    try:
+        # Ping Firestore to ensure the connection is alive
+        fs.collection('students').limit(1).stream()
+        return jsonify({'status': 'ok', 'firebase': 'connected'}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/debug-env')
+def debug_env():
+    """Shows which critical environment variables are SET vs MISSING. Values are hidden."""
+    keys = [
+        'SECRET_KEY', 'ADMIN_USERNAME', 'ADMIN_PASSWORD_HASH',
+        'FIREBASE_SERVICE_ACCOUNT_JSON', 'DATABASE_URL', 'FIREBASE_API_KEY',
+    ]
+    result = {k: ('SET ✓' if os.environ.get(k) else 'MISSING ✗') for k in keys}
+    sa_json = os.environ.get('FIREBASE_SERVICE_ACCOUNT_JSON', '')
+    result['FIREBASE_SERVICE_ACCOUNT_JSON_len'] = len(sa_json)
+    result['FIREBASE_SERVICE_ACCOUNT_JSON_starts_with'] = sa_json[:15] if sa_json else 'N/A'
+    return jsonify(result), 200
+
+
 
 def _read_students():
     """Return list of student dicts from Firestore."""
